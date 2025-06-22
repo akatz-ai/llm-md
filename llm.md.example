@@ -1,0 +1,21 @@
+# LLM Context Configuration
+
+# This file controls which files are included in the LLM context output.
+# Patterns follow gitignore syntax.
+
+INCLUDE:
+# If this section exists and has patterns, ONLY files matching these patterns will be included
+# Leave this section empty or remove it to include all files (except those ignored by .gitignore and EXCLUDE)
+# Examples:
+# src/**/*.py
+# docs/*.md
+# config.yaml
+
+EXCLUDE:
+# Files matching these patterns will be excluded (in addition to .gitignore)
+# This section is always additive to .gitignore rules
+# Examples:
+# tests/**
+# *.test.js
+# build/
+# temp*
