@@ -1,5 +1,5 @@
 [project]
-name = "llm-md"
+name = "llmd"
 version = "0.1.0"
 description = "CLI tool for generating LLM context from GitHub repositories"
 readme = "README.md"
@@ -10,4 +10,4 @@ dependencies = [
 ]
 
 [project.scripts]
-llm-md = "llm_md.cli:main"
+llmd = "llmd.cli:main"

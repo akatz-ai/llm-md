@@ -1,4 +1,4 @@
-# llm-md
+# llmd
 
 A CLI tool for generating LLM context from GitHub repositories. This tool scans through files in a repository and creates a single markdown file containing all relevant code, making it easy to provide context to Large Language Models.
 
@@ -15,32 +15,32 @@ A CLI tool for generating LLM context from GitHub repositories. This tool scans 
 
 ```bash
 # Install using uv tool (for global cli setup)
-uv tool install llm-md
+uv tool install llmd
 
 # Or install directly
-pip install llm-md
+pip install llmd
 ```
 
 ## Usage
 
 Basic usage:
 ```bash
-llm-md /path/to/repo
+llmd /path/to/repo
 ```
 
 Specify output file:
 ```bash
-llm-md /path/to/repo -o context.md
+llmd /path/to/repo -o context.md
 ```
 
 Override the llm.md configuration file:
 ```bash
-llm-md /path/to/repo -c custom-llm.md
+llmd /path/to/repo -c custom-llm.md
 ```
 
 Verbose output:
 ```bash
-llm-md /path/to/repo -v
+llmd /path/to/repo -v
 ```
 
 ## Configuration
@@ -87,17 +87,17 @@ The generated markdown file includes:
 
 ```bash
 # Generate context for the current directory (auto-detects llm.md if present)
-llm-md .
+llmd .
 
 # Generate context for a specific project
-llm-md ~/projects/my-app -o my-app-context.md
+llmd ~/projects/my-app -o my-app-context.md
 
 # Use a different llm.md file than the one in the repository
-llm-md ~/projects/my-app -c ~/configs/python-only.md
+llmd ~/projects/my-app -c ~/configs/python-only.md
 
 # Include only Python files (create llm.md in the repo)
 echo "INCLUDE:\n**/*.py" > llm.md
-llm-md .
+llmd .
 ```
 
 ## License
