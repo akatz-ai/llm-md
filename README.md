@@ -14,11 +14,11 @@ A CLI tool for generating LLM context from GitHub repositories. This tool scans 
 ## Installation
 
 ```bash
-# Install using uv
-uv pip install -e .
+# Install using uv tool (for global cli setup)
+uv tool install llm-md
 
 # Or install directly
-pip install -e .
+pip install llm-md
 ```
 
 ## Usage
