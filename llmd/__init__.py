@@ -1,3 +1,7 @@
 """LLM-MD: A CLI tool for generating LLM context from GitHub repositories."""
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version
+    __version__ = version('llmd')
+except ImportError:
+    __version__ = "dev"

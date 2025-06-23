@@ -1,19 +1,27 @@
 import click
 from pathlib import Path
 from typing import Optional
+from importlib.metadata import version, PackageNotFoundError
 from .scanner import RepoScanner
 from .parser import GitignoreParser, LlmMdParser
 from .generator import MarkdownGenerator
 
+try:
+    __version__ = version('llmd')
+except PackageNotFoundError:
+    __version__ = 'dev'
+
 
 @click.command()
+@click.version_option(version=__version__, prog_name='llmd')
 @click.argument('repo_path', type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path))
 @click.option('-o', '--output', type=click.Path(path_type=Path), default='llm-context.md',
               help='Output markdown file path (default: llm-context.md)')
 @click.option('-c', '--config', type=click.Path(exists=True, path_type=Path),
               help='Override path to llm.md configuration file (default: auto-detect in repo root)')
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose output')
-def main(repo_path: Path, output: Path, config: Optional[Path], verbose: bool):
+@click.option('--dry-run', is_flag=True, help='Show which files would be included without generating output')
+def main(repo_path: Path, output: Path, config: Optional[Path], verbose: bool, dry_run: bool):
     """Generate LLM context from a GitHub repository.
     
     This tool scans through files in a repository and creates a single markdown
@@ -23,7 +31,8 @@ def main(repo_path: Path, output: Path, config: Optional[Path], verbose: bool):
     If an llm.md file exists in the repository root, it will be used automatically
     unless overridden with the -c option.
     """
-    click.echo(f"Scanning repository: {repo_path}")
+    if not dry_run:
+        click.echo(f"Scanning repository: {repo_path}")
     
     # Initialize parsers
     gitignore_parser = GitignoreParser(repo_path)
@@ -32,28 +41,37 @@ def main(repo_path: Path, output: Path, config: Optional[Path], verbose: bool):
     if config:
         # User explicitly provided a config file
         llm_config_path = config
-        click.echo(f"Using specified llm.md config: {llm_config_path}")
+        if not dry_run:
+            click.echo(f"Using specified llm.md config: {llm_config_path}")
     else:
         # Check if llm.md exists in the repo root
         default_llm_path = repo_path / 'llm.md'
         if default_llm_path.exists():
             llm_config_path = default_llm_path
-            click.echo(f"Found llm.md in repository root: {llm_config_path}")
+            if not dry_run:
+                click.echo(f"Found llm.md in repository root: {llm_config_path}")
         else:
             llm_config_path = None
-            if verbose:
+            if verbose and not dry_run:
                 click.echo("No llm.md file found in repository root")
     
     llm_parser = LlmMdParser(llm_config_path)
     
     # Create scanner with filtering rules
-    scanner = RepoScanner(repo_path, gitignore_parser, llm_parser, verbose=verbose)
+    # In dry-run mode, suppress verbose output from scanner since we'll print files ourselves
+    scanner = RepoScanner(repo_path, gitignore_parser, llm_parser, verbose=verbose and not dry_run)
     
     # Scan files
     files = scanner.scan()
     
     if not files:
         click.echo("No files found matching the criteria.", err=True)
+        return
+    
+    if dry_run:
+        # In dry-run mode, just output the list of files that would be included
+        for file in files:
+            click.echo(f"+{file.relative_to(repo_path)}")
         return
     
     click.echo(f"Found {len(files)} files to process")
