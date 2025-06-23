@@ -42,10 +42,12 @@ class GitignoreParser:
 class LlmMdParser:
     """Parse llm.md configuration file."""
     
-    def __init__(self, config_path: Optional[Path]):
+    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None):
         self.config_path = config_path
         self.include_patterns: List[str] = []
         self.exclude_patterns: List[str] = []
+        self.cli_include = cli_include or []
+        self.cli_exclude = cli_exclude or []
         self._parse_config()
     
     def _parse_config(self):
@@ -81,11 +83,14 @@ class LlmMdParser:
     
     def has_include_patterns(self) -> bool:
         """Check if there are any include patterns specified."""
-        return bool(self.include_patterns)
+        return bool(self.include_patterns or self.cli_include)
     
     def should_include(self, path: Path, repo_path: Path) -> bool:
         """Check if a file should be included based on INCLUDE patterns."""
-        if not self.include_patterns:
+        # Combine CLI and config patterns (CLI takes precedence if both exist)
+        all_patterns = self.cli_include if self.cli_include else self.include_patterns
+        
+        if not all_patterns:
             return True  # If no include patterns, include everything
         
         try:
@@ -96,12 +101,15 @@ class LlmMdParser:
         rel_path_str = str(rel_path)
         
         # Check if file matches any include pattern
-        spec = pathspec.PathSpec.from_lines('gitwildmatch', self.include_patterns)
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', all_patterns)
         return spec.match_file(rel_path_str)
     
     def should_exclude(self, path: Path, repo_path: Path) -> bool:
         """Check if a file should be excluded based on EXCLUDE patterns."""
-        if not self.exclude_patterns:
+        # Combine CLI and config patterns (both are additive for excludes)
+        all_patterns = self.cli_exclude + self.exclude_patterns
+        
+        if not all_patterns:
             return False
         
         try:
@@ -112,5 +120,5 @@ class LlmMdParser:
         rel_path_str = str(rel_path)
         
         # Check if file matches any exclude pattern
-        spec = pathspec.PathSpec.from_lines('gitwildmatch', self.exclude_patterns)
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', all_patterns)
         return spec.match_file(rel_path_str)
