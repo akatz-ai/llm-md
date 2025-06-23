@@ -42,12 +42,14 @@ class GitignoreParser:
 class LlmMdParser:
     """Parse llm.md configuration file."""
     
-    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None):
+    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, cli_only: Optional[List[str]] = None):
         self.config_path = config_path
         self.include_patterns: List[str] = []
         self.exclude_patterns: List[str] = []
+        self.only_patterns: List[str] = []
         self.cli_include = cli_include or []
         self.cli_exclude = cli_exclude or []
+        self.cli_only = cli_only or []
         self._parse_config()
     
     def _parse_config(self):
@@ -68,7 +70,10 @@ class LlmMdParser:
                 continue
             
             # Check for section headers
-            if line.upper() == 'INCLUDE:':
+            if line.upper() == 'ONLY:':
+                current_section = 'only'
+                continue
+            elif line.upper() == 'INCLUDE:':
                 current_section = 'include'
                 continue
             elif line.upper() == 'EXCLUDE:' or line.upper() == 'NOT INCLUDE:':
@@ -76,10 +81,16 @@ class LlmMdParser:
                 continue
             
             # Add pattern to appropriate list
-            if current_section == 'include':
+            if current_section == 'only':
+                self.only_patterns.append(line)
+            elif current_section == 'include':
                 self.include_patterns.append(line)
             elif current_section == 'exclude':
                 self.exclude_patterns.append(line)
+    
+    def has_only_patterns(self) -> bool:
+        """Check if there are any only patterns specified."""
+        return bool(self.only_patterns or self.cli_only)
     
     def has_include_patterns(self) -> bool:
         """Check if there are any include patterns specified."""
@@ -120,5 +131,24 @@ class LlmMdParser:
         rel_path_str = str(rel_path)
         
         # Check if file matches any exclude pattern
+        spec = pathspec.PathSpec.from_lines('gitwildmatch', all_patterns)
+        return spec.match_file(rel_path_str)
+    
+    def matches_only(self, path: Path, repo_path: Path) -> bool:
+        """Check if a file matches ONLY patterns."""
+        # Combine CLI and config patterns (CLI takes precedence if both exist)
+        all_patterns = self.cli_only if self.cli_only else self.only_patterns
+        
+        if not all_patterns:
+            return False
+        
+        try:
+            rel_path = path.relative_to(repo_path)
+        except ValueError:
+            return False
+        
+        rel_path_str = str(rel_path)
+        
+        # Check if file matches any only pattern
         spec = pathspec.PathSpec.from_lines('gitwildmatch', all_patterns)
         return spec.match_file(rel_path_str)

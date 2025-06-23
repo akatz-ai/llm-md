@@ -3,13 +3,23 @@
 # This file controls which files are included in the LLM context output.
 # Patterns follow gitignore syntax.
 
-INCLUDE:
-# If this section exists and has patterns, ONLY files matching these patterns will be included
-# Leave this section empty or remove it to include all files (except those ignored by .gitignore and EXCLUDE)
+ONLY:
+# When this section has patterns, ONLY these files will be included,
+# ignoring ALL exclusions (.gitignore, EXCLUDE, hidden files, binary files)
+# Use this for strict whitelisting
 # Examples:
 # src/**/*.py
 # docs/*.md
-# config.yaml
+# README.md
+
+INCLUDE:
+# Files matching these patterns will be rescued from exclusions
+# (they'll be included even if gitignored, hidden, or excluded)
+# Use this to include specific files that would normally be filtered out
+# Examples:
+# .github/workflows/*.yml
+# .env.example
+# build/dist.js
 
 EXCLUDE:
 # Files matching these patterns will be excluded (in addition to .gitignore)
@@ -19,3 +29,9 @@ EXCLUDE:
 # *.test.js
 # build/
 # temp*
+
+# Notes:
+# - Sections can appear in any order
+# - Empty sections are ignored
+# - Use "NOT INCLUDE:" as an alternative name for "EXCLUDE:"
+# - CLI options take precedence over patterns in this file

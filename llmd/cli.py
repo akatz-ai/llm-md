@@ -21,9 +21,10 @@ except PackageNotFoundError:
               help='Override path to llm.md configuration file (default: auto-detect in repo root)')
 @click.option('-i', '--include', multiple=True, help='Include files matching these patterns (can be specified multiple times)')
 @click.option('-e', '--exclude', multiple=True, help='Exclude files matching these patterns (can be specified multiple times)')
+@click.option('-O', '--only', multiple=True, help='Only include files matching these patterns, ignoring all exclusions (can be specified multiple times)')
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose output')
 @click.option('--dry-run', is_flag=True, help='Show which files would be included without generating output')
-def main(repo_path: Path, output: Path, config: Optional[Path], include: tuple, exclude: tuple, verbose: bool, dry_run: bool):
+def main(repo_path: Path, output: Path, config: Optional[Path], include: tuple, exclude: tuple, only: tuple, verbose: bool, dry_run: bool):
     """Generate LLM context from a GitHub repository.
     
     This tool scans through files in a repository and creates a single markdown
@@ -57,9 +58,11 @@ def main(repo_path: Path, output: Path, config: Optional[Path], include: tuple, 
             if verbose and not dry_run:
                 click.echo("No llm.md file found in repository root")
     
-    llm_parser = LlmMdParser(llm_config_path, cli_include=list(include), cli_exclude=list(exclude))
+    llm_parser = LlmMdParser(llm_config_path, cli_include=list(include), cli_exclude=list(exclude), cli_only=list(only))
     
     # Show CLI pattern usage
+    if only and verbose and not dry_run:
+        click.echo(f"Using CLI only patterns: {', '.join(only)}")
     if include and verbose and not dry_run:
         click.echo(f"Using CLI include patterns: {', '.join(include)}")
     if exclude and verbose and not dry_run:

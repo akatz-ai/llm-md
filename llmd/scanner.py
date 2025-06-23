@@ -37,10 +37,11 @@ class RepoScanner:
         """Scan repository and return list of files to include."""
         files = []
         
-        # If there are include patterns, only scan those
-        if self.llm_parser.has_include_patterns():
-            files = self._scan_with_includes()
+        # If there are ONLY patterns, use them exclusively
+        if self.llm_parser.has_only_patterns():
+            files = self._scan_with_only()
         else:
+            # Otherwise scan all files with normal filtering
             files = self._scan_all_files()
         
         # Sort files for consistent output
@@ -48,21 +49,19 @@ class RepoScanner:
         
         return files
     
-    def _scan_with_includes(self) -> List[Path]:
-        """Scan only files matching include patterns."""
+    def _scan_with_only(self) -> List[Path]:
+        """Scan only files matching ONLY patterns, ignoring all exclusions."""
         files = []
         
-        for path in self._walk_directory(self.repo_path):
+        for path in self._walk_directory(self.repo_path, check_only=True):
             if not path.is_file():
                 continue
             
-            # Check if file matches include patterns
-            if self.llm_parser.should_include(path, self.repo_path):
-                # Still check gitignore and exclude patterns
-                if not self._should_skip_file(path):
-                    files.append(path)
-                    if self.verbose:
-                        click.echo(f"  + {path.relative_to(self.repo_path)}")
+            # Check if file matches ONLY patterns - ignore all exclusions
+            if self.llm_parser.matches_only(path, self.repo_path):
+                files.append(path)
+                if self.verbose:
+                    click.echo(f"  + {path.relative_to(self.repo_path)}")
         
         return files
     
@@ -81,26 +80,30 @@ class RepoScanner:
         
         return files
     
-    def _walk_directory(self, directory: Path):
+    def _walk_directory(self, directory: Path, check_only: bool = False):
         """Walk directory tree, skipping certain directories."""
         for item in directory.iterdir():
             if item.is_dir():
-                # Skip known problematic directories
-                if item.name in self.SKIP_DIRS:
-                    continue
+                # If using ONLY patterns, don't skip any directories
+                if not check_only:
+                    # Check if directory might have includes before skipping
+                    if self._might_have_includes_in_directory(item):
+                        # Don't skip if includes might match files inside
+                        pass
+                    elif item.name in self.SKIP_DIRS:
+                        # Skip known problematic directories
+                        continue
+                    elif item.name.startswith('.'):
+                        # Skip hidden directories
+                        continue
                 
-                # For dot-directories, only skip if there are no include patterns
-                # that might match files within them
-                if item.name.startswith('.') and not self._might_have_includes_in_directory(item):
-                    continue
-                
-                yield from self._walk_directory(item)
+                yield from self._walk_directory(item, check_only=check_only)
             else:
                 yield item
     
     def _might_have_includes_in_directory(self, directory: Path) -> bool:
-        """Check if include patterns might match files in this directory."""
-        if not self.llm_parser.has_include_patterns():
+        """Check if include or only patterns might match files in this directory."""
+        if not self.llm_parser.has_include_patterns() and not self.llm_parser.has_only_patterns():
             return False
         
         # Get relative path from repo root
@@ -111,8 +114,10 @@ class RepoScanner:
         
         rel_dir_str = str(rel_dir) + '/'
         
-        # Check if any include pattern might match files in this directory
-        all_patterns = self.llm_parser.cli_include if self.llm_parser.cli_include else self.llm_parser.include_patterns
+        # Check if any include or only pattern might match files in this directory
+        include_patterns = self.llm_parser.cli_include if self.llm_parser.cli_include else self.llm_parser.include_patterns
+        only_patterns = self.llm_parser.cli_only if self.llm_parser.cli_only else self.llm_parser.only_patterns
+        all_patterns = include_patterns + only_patterns
         
         for pattern in all_patterns:
             # Check if pattern could match something in this directory
@@ -135,6 +140,10 @@ class RepoScanner:
     
     def _should_skip_file(self, path: Path) -> bool:
         """Check if a file should be skipped."""
+        # If file matches INCLUDE patterns, it should be rescued from exclusions
+        if self.llm_parser.has_include_patterns() and self.llm_parser.should_include(path, self.repo_path):
+            return False
+        
         # Check binary extensions
         if path.suffix.lower() in self.BINARY_EXTENSIONS:
             return True
@@ -147,12 +156,8 @@ class RepoScanner:
         if self.llm_parser.should_exclude(path, self.repo_path):
             return True
         
-        # Skip hidden files only if they're not explicitly included
+        # Skip hidden files
         if path.name.startswith('.'):
-            # If there are include patterns and this file matches one, don't skip it
-            if self.llm_parser.has_include_patterns() and self.llm_parser.should_include(path, self.repo_path):
-                return False
-            # Otherwise skip hidden files
             return True
         
         return False

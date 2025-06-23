@@ -40,9 +40,14 @@ Override the llm.md configuration file:
 llmd /path/to/repo -c custom-llm.md
 ```
 
-Include only specific file patterns:
+Include only specific file patterns (ignoring all exclusions):
 ```bash
-llmd /path/to/repo --include "*.py" --include "*.js"
+llmd /path/to/repo --only "*.py" --only "*.js"
+```
+
+Include additional files that would normally be excluded:
+```bash
+llmd /path/to/repo --include ".github/**" --include "build/*.js"
 ```
 
 Exclude specific file patterns:
@@ -75,10 +80,15 @@ Create an `llm.md` file to control which files are included:
 ```
 # Example llm.md
 
-INCLUDE:
-# If this section has patterns, ONLY these files will be included
+ONLY:
+# When present, ONLY these files are included, ignoring all exclusions
 src/**/*.py
 docs/*.md
+
+INCLUDE:
+# These patterns rescue files from exclusions (.gitignore, EXCLUDE, hidden files)
+.github/workflows/*.yml
+build/dist.js
 
 EXCLUDE:
 # These files will be excluded (in addition to .gitignore)
@@ -95,16 +105,23 @@ Pattern syntax follows gitignore conventions:
 
 ### Command-line Options
 
-The `--include` and `--exclude` options allow you to specify patterns directly on the command line:
+The pattern options allow you to control file inclusion/exclusion:
 
-- `--include`/`-i`: Include only files matching these patterns (can be specified multiple times)
+- `--only`/`-O`: Include ONLY files matching these patterns, ignoring all exclusions (can be specified multiple times)
+- `--include`/`-i`: Rescue files matching these patterns from exclusions (can be specified multiple times)
 - `--exclude`/`-e`: Exclude files matching these patterns (can be specified multiple times)
 - `--dry-run`: Preview which files would be included without generating output
 
+**Pattern precedence (highest to lowest):**
+1. `ONLY` patterns (CLI or llm.md) - when present, ONLY these files are included
+2. `INCLUDE` patterns - rescue files from exclusions (gitignore, EXCLUDE, hidden files)
+3. `EXCLUDE` patterns - additional exclusions beyond gitignore
+4. Default behavior - all files except gitignored, hidden, and binary files
+
 **Priority rules:**
-- CLI `--include` patterns override any include patterns in `llm.md`
-- CLI `--exclude` patterns are additive with `llm.md` exclude patterns
-- When no include patterns are specified (CLI or llm.md), all files are considered
+- CLI `--only` patterns override any ONLY patterns in `llm.md`
+- CLI `--include` patterns override any INCLUDE patterns in `llm.md`
+- CLI `--exclude` patterns are additive with `llm.md` EXCLUDE patterns
 
 ## Output Format
 
@@ -125,20 +142,26 @@ llmd ~/projects/my-app -o my-app-context.md
 # Use a different llm.md file than the one in the repository
 llmd ~/projects/my-app -c ~/configs/python-only.md
 
-# Include only Python files using CLI option
-llmd . --include "*.py"
+# Include only Python files, ignoring all exclusions
+llmd . --only "*.py"
 
-# Include multiple file types
-llmd . -i "*.py" -i "*.js" -i "*.tsx"
+# Include only specific file types
+llmd . -O "*.py" -O "*.js" -O "*.tsx"
+
+# Rescue hidden files and gitignored files that match patterns
+llmd . --include ".github/**" --include "build/dist.js"
 
 # Exclude test files
 llmd . --exclude "**/test_*.py" --exclude "**/*.test.js"
 
 # Preview files that would be included
-llmd . --dry-run --include "src/**/*.py"
+llmd . --dry-run --only "src/**/*.py"
 
-# Combine include and exclude patterns
-llmd . --include "*.py" --exclude "**/migrations/**"
+# Use ONLY to get test files that would normally be excluded
+llmd . --only "**/test_*.py" --only "**/*.test.js"
+
+# Combine rescue patterns with excludes
+llmd . --include ".env" --exclude "**/migrations/**"
 
 # Include only Python files (create llm.md in the repo)
 echo "INCLUDE:\n**/*.py" > llm.md
