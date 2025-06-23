@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Set
+from typing import List
 import click
 from .parser import GitignoreParser, LlmMdParser
 
@@ -85,10 +85,53 @@ class RepoScanner:
         """Walk directory tree, skipping certain directories."""
         for item in directory.iterdir():
             if item.is_dir():
-                if item.name not in self.SKIP_DIRS and not item.name.startswith('.'):
-                    yield from self._walk_directory(item)
+                # Skip known problematic directories
+                if item.name in self.SKIP_DIRS:
+                    continue
+                
+                # For dot-directories, only skip if there are no include patterns
+                # that might match files within them
+                if item.name.startswith('.') and not self._might_have_includes_in_directory(item):
+                    continue
+                
+                yield from self._walk_directory(item)
             else:
                 yield item
+    
+    def _might_have_includes_in_directory(self, directory: Path) -> bool:
+        """Check if include patterns might match files in this directory."""
+        if not self.llm_parser.has_include_patterns():
+            return False
+        
+        # Get relative path from repo root
+        try:
+            rel_dir = directory.relative_to(self.repo_path)
+        except ValueError:
+            return False
+        
+        rel_dir_str = str(rel_dir) + '/'
+        
+        # Check if any include pattern might match files in this directory
+        all_patterns = self.llm_parser.cli_include if self.llm_parser.cli_include else self.llm_parser.include_patterns
+        
+        for pattern in all_patterns:
+            # Check if pattern could match something in this directory
+            # This is a simple check - if the pattern starts with or contains the directory path
+            if pattern.startswith(rel_dir_str) or f'**/{rel_dir.name}/' in pattern or pattern.startswith('**/'):
+                return True
+            # Also check if the directory is part of the pattern path
+            pattern_parts = pattern.split('/')
+            dir_parts = rel_dir_str.rstrip('/').split('/')
+            if len(dir_parts) <= len(pattern_parts):
+                matches = True
+                for i, dir_part in enumerate(dir_parts):
+                    if pattern_parts[i] != '**' and pattern_parts[i] != '*' and pattern_parts[i] != dir_part:
+                        matches = False
+                        break
+                if matches:
+                    return True
+        
+        return False
     
     def _should_skip_file(self, path: Path) -> bool:
         """Check if a file should be skipped."""
@@ -104,8 +147,12 @@ class RepoScanner:
         if self.llm_parser.should_exclude(path, self.repo_path):
             return True
         
-        # Skip hidden files (unless explicitly included)
-        if path.name.startswith('.') and not self.llm_parser.has_include_patterns():
+        # Skip hidden files only if they're not explicitly included
+        if path.name.startswith('.'):
+            # If there are include patterns and this file matches one, don't skip it
+            if self.llm_parser.has_include_patterns() and self.llm_parser.should_include(path, self.repo_path):
+                return False
+            # Otherwise skip hidden files
             return True
         
         return False

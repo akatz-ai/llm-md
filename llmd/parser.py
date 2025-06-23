@@ -1,6 +1,6 @@
 import pathspec
 from pathlib import Path
-from typing import List, Set, Optional
+from typing import List, Optional
 
 
 class GitignoreParser:
