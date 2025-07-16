@@ -58,7 +58,10 @@ def main(repo_path: Path, output: Path, config: Optional[Path], include: tuple, 
             if verbose and not dry_run:
                 click.echo("No llm.md file found in repository root")
     
-    llm_parser = LlmMdParser(llm_config_path, cli_include=list(include), cli_exclude=list(exclude), cli_only=list(only))
+    # Determine default_mode for when no llm.md exists
+    default_mode = "BLACKLIST" if llm_config_path is None else None
+    
+    llm_parser = LlmMdParser(llm_config_path, cli_include=list(include), cli_exclude=list(exclude), cli_only=list(only), default_mode=default_mode)
     
     # Show CLI pattern usage
     if only and verbose and not dry_run:

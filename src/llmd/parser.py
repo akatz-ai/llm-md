@@ -42,8 +42,9 @@ class GitignoreParser:
 class LlmMdParser:
     """Parse llm.md configuration file."""
     
-    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, cli_only: Optional[List[str]] = None):
+    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, cli_only: Optional[List[str]] = None, default_mode: Optional[str] = None):
         self.config_path = config_path
+        self.default_mode = default_mode
         # Legacy format attributes
         self.include_patterns: List[str] = []
         self.exclude_patterns: List[str] = []
@@ -60,9 +61,32 @@ class LlmMdParser:
         
         self._parse_config()
     
+    def _setup_default_config(self):
+        """Set up default configuration when no llm.md file exists."""
+        self.mode = self.default_mode
+        self.implicit_patterns = []  # No explicit patterns for default mode
+        
+        # Create one section for the default mode with empty patterns
+        section = {
+            'type': self.default_mode,
+            'patterns': []
+        }
+        self.sections = [section]
+        
+        # Set default options according to PRD
+        self.options = {
+            'output': 'llm-context.md',
+            'respect_gitignore': True,
+            'include_hidden': False,
+            'include_binary': False
+        }
+    
     def _parse_config(self):
         """Parse the llm.md configuration file."""
         if not self.config_path or not self.config_path.exists():
+            # If no config file exists but default_mode is provided, set up default configuration
+            if self.default_mode:
+                self._setup_default_config()
             return
         
         content = self.config_path.read_text(encoding='utf-8')
