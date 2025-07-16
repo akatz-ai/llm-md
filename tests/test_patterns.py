@@ -309,3 +309,337 @@ README.md
         assert "README.md" in file_names
         assert "main.py" in file_names
         assert ".hidden_file" not in file_names
+
+
+class TestSequentialPatternProcessing:
+    """Test new mode-based sequential pattern processing for RepoScanner."""
+    
+    @pytest.fixture
+    def temp_repo(self):
+        """Create a temporary repository structure for testing."""
+        temp_dir = tempfile.mkdtemp()
+        repo_path = Path(temp_dir)
+        
+        # Create test file structure
+        files = [
+            "README.md",
+            "main.py",
+            "test.py", 
+            ".hidden_file",
+            ".github/workflows/test.yml",
+            "src/module.py",
+            "src/utils.py", 
+            "src/.hidden_module.py",
+            "docs/index.md",
+            "docs/api.md",
+            "node_modules/package.json",
+            "build/output.js",
+            "__pycache__/cache.pyc",
+            "data.json",
+            "config.yaml",
+            "image.png",
+            "archive.zip"
+        ]
+        
+        for file_path in files:
+            full_path = repo_path / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(f"Content of {file_path}")
+        
+        # Create .gitignore
+        gitignore_content = """
+node_modules/
+build/
+*.pyc
+__pycache__/
+"""
+        (repo_path / ".gitignore").write_text(gitignore_content)
+        
+        yield repo_path
+        
+        # Cleanup
+        shutil.rmtree(temp_dir)
+    
+    def test_whitelist_mode_sequential_processing(self, temp_repo):
+        """Test WHITELIST mode starts with empty set and adds files sequentially."""
+        # Create llm.md with WHITELIST mode
+        llm_md_content = """WHITELIST:
+src/
+*.py
+
+EXCLUDE:
+src/utils.py
+
+INCLUDE:
+docs/*.md
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should include files matching WHITELIST implicit patterns
+        assert "src/module.py" in file_paths
+        assert "main.py" in file_paths
+        assert "test.py" in file_paths
+        
+        # Should exclude src/utils.py due to EXCLUDE section
+        assert "src/utils.py" not in file_paths
+        
+        # Should include docs/*.md due to INCLUDE section
+        assert "docs/index.md" in file_paths
+        assert "docs/api.md" in file_paths
+        
+        # Should NOT include files not matching WHITELIST patterns
+        assert "README.md" not in file_paths
+        assert "data.json" not in file_paths
+        assert "config.yaml" not in file_paths
+    
+    def test_blacklist_mode_sequential_processing(self, temp_repo):
+        """Test BLACKLIST mode starts with all files and removes files sequentially."""
+        # Create llm.md with BLACKLIST mode
+        llm_md_content = """BLACKLIST:
+*.py
+docs/
+
+INCLUDE:
+src/utils.py
+docs/api.md
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should exclude Python files due to BLACKLIST implicit patterns
+        assert "main.py" not in file_paths
+        assert "test.py" not in file_paths
+        assert "src/module.py" not in file_paths
+        
+        # Should include src/utils.py due to INCLUDE section (rescued)
+        assert "src/utils.py" in file_paths
+        
+        # Should exclude docs/ due to BLACKLIST implicit patterns
+        assert "docs/index.md" not in file_paths
+        
+        # Should include docs/api.md due to INCLUDE section (rescued)
+        assert "docs/api.md" in file_paths
+        
+        # Should include other files not matching BLACKLIST patterns
+        assert "README.md" in file_paths
+        assert "data.json" in file_paths
+        assert "config.yaml" in file_paths
+    
+    def test_default_exclusions_with_options(self, temp_repo):
+        """Test that default exclusions are applied based on options."""
+        # Create llm.md with options controlling default exclusions
+        llm_md_content = """WHITELIST:
+**/*
+
+OPTIONS:
+respect_gitignore: false
+include_hidden: true
+include_binary: false
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should include gitignored files (respect_gitignore=false)
+        assert "node_modules/package.json" in file_paths
+        assert "build/output.js" in file_paths
+        
+        # Should include hidden files (include_hidden=true)
+        assert ".hidden_file" in file_paths
+        assert ".github/workflows/test.yml" in file_paths
+        assert "src/.hidden_module.py" in file_paths
+        
+        # Should exclude binary files (include_binary=false)
+        assert "image.png" not in file_paths
+        assert "archive.zip" not in file_paths
+    
+    def test_options_flags_override_default_exclusions(self, temp_repo):
+        """Test that CLI options override default exclusion behavior."""
+        # Create llm.md with default options
+        llm_md_content = """BLACKLIST:
+
+OPTIONS:
+respect_gitignore: true
+include_hidden: false
+include_binary: false
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        
+        # TODO: This test will need CLI option integration 
+        # For now, test that scanner respects options from parser
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should exclude gitignored files (respect_gitignore=true)
+        assert "node_modules/package.json" not in file_paths
+        assert "build/output.js" not in file_paths
+        
+        # Should exclude hidden files (include_hidden=false)
+        assert ".hidden_file" not in file_paths
+        assert ".github/workflows/test.yml" not in file_paths
+        
+        # Should exclude binary files (include_binary=false)
+        assert "image.png" not in file_paths
+        assert "archive.zip" not in file_paths
+    
+    def test_scanner_works_with_updated_parser_interface(self, temp_repo):
+        """Test scanner works with new parser methods: get_mode(), get_sections(), get_options()."""
+        # Create llm.md with multiple sections
+        llm_md_content = """WHITELIST:
+*.py
+
+EXCLUDE:
+test_*.py
+
+INCLUDE:
+test_main.py
+
+OPTIONS:
+output: custom.md
+respect_gitignore: true
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        # Create test_main.py for the test
+        (temp_repo / "test_main.py").write_text("test content")
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        
+        # Verify parser interface works
+        assert llm_parser.get_mode() == "WHITELIST"
+        sections = llm_parser.get_sections()
+        assert len(sections) >= 3  # WHITELIST, EXCLUDE, INCLUDE
+        options = llm_parser.get_options()
+        assert options.get("output") == "custom.md"
+        
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should include Python files
+        assert "main.py" in file_paths
+        
+        # Should exclude test.py (matches test_*.py pattern)
+        assert "test.py" not in file_paths
+        
+        # Should include test_main.py (rescued by INCLUDE)
+        assert "test_main.py" in file_paths
+    
+    def test_sequential_processing_order_matters(self, temp_repo):
+        """Test that sections are processed in order and later sections can override earlier ones."""
+        # Create llm.md where section order matters
+        llm_md_content = """WHITELIST:
+*.py
+
+EXCLUDE:
+test.py
+
+INCLUDE:
+test.py
+
+EXCLUDE:
+main.py
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # test.py should be included (INCLUDE overrides earlier EXCLUDE)
+        assert "test.py" in file_paths
+        
+        # main.py should be excluded (final EXCLUDE takes precedence)
+        assert "main.py" not in file_paths
+        
+        # Other Python files should be included
+        assert "src/module.py" in file_paths
+        assert "src/utils.py" in file_paths
+    
+    def test_empty_mode_sections_handled_gracefully(self, temp_repo):
+        """Test that empty sections are handled without errors."""
+        # Create llm.md with empty sections
+        llm_md_content = """WHITELIST:
+
+EXCLUDE:
+
+INCLUDE:
+
+OPTIONS:
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        # Should not crash
+        files = scanner.scan()
+        
+        # With empty WHITELIST, should have no files (except maybe rescued by default exclusions logic)
+        # This tests the edge case handling
+        assert isinstance(files, list)
+    
+    def test_legacy_format_still_works(self, temp_repo):
+        """Test that existing legacy ONLY/INCLUDE/EXCLUDE format still works."""
+        # Create llm.md with legacy format (no mode declaration)
+        llm_md_content = """ONLY:
+*.py
+
+INCLUDE:
+*.md
+
+EXCLUDE:
+test_*.py
+"""
+        llm_md_path = temp_repo / "llm.md"
+        llm_md_path.write_text(llm_md_content)
+        
+        gitignore_parser = GitignoreParser(temp_repo)
+        llm_parser = LlmMdParser(llm_md_path)
+        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
+        
+        files = scanner.scan()
+        file_paths = [str(f.relative_to(temp_repo)) for f in files]
+        
+        # Should behave like before - ONLY patterns take precedence
+        assert "main.py" in file_paths
+        assert "test.py" in file_paths  # ONLY overrides EXCLUDE
+        assert "src/module.py" in file_paths
+        
+        # Should not include non-matching files even if INCLUDE exists
+        assert "README.md" not in file_paths  # ONLY takes precedence over INCLUDE
