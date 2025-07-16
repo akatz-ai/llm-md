@@ -516,7 +516,7 @@ include_binary: false
 *.py
 
 EXCLUDE:
-test_*.py
+test*.py
 
 INCLUDE:
 test_main.py
@@ -548,7 +548,7 @@ respect_gitignore: true
         # Should include Python files
         assert "main.py" in file_paths
         
-        # Should exclude test.py (matches test_*.py pattern)
+        # Should exclude test.py (matches test*.py pattern)
         assert "test.py" not in file_paths
         
         # Should include test_main.py (rescued by INCLUDE)
