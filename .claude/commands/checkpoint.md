@@ -1,0 +1,1 @@
+Immediately checkout a new git branch with the name $ARGUMENTS, and commit the current changes to that new branch
