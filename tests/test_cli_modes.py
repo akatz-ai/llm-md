@@ -296,3 +296,165 @@ class TestQuietMode:
             result = runner.invoke(main, [str(repo_path), '-w', '*.py', '-q', '--dry-run'])
             assert result.exit_code == 0
             assert "+test.py" in result.output
+
+
+class TestTask6CliAlignment:
+    """Test Task 6 - Complete CLI Interface Alignment and Remove Legacy Features."""
+    
+    def test_path_argument_is_optional_defaults_to_current_dir(self):
+        """Test that PATH argument is optional and defaults to current directory."""
+        runner = CliRunner()
+        
+        # Change to a temp directory and test without PATH argument
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            (repo_path / "test.py").write_text("print('test')")
+            
+            # Test without PATH argument - should work
+            with runner.isolated_filesystem():
+                # Copy test file to current directory
+                Path("test.py").write_text("print('test')")
+                result = runner.invoke(main, ['-w', '*.py', '--dry-run'])
+                assert result.exit_code == 0
+                assert "+test.py" in result.output
+    
+    def test_multiple_pattern_arguments_work(self):
+        """Test that multiple patterns work for -w and -b flags: llmd . -w "src/" "tests/" """
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            
+            # Create directory structure
+            src_dir = repo_path / "src"
+            tests_dir = repo_path / "tests"
+            src_dir.mkdir()
+            tests_dir.mkdir()
+            
+            (src_dir / "main.py").write_text("print('main')")
+            (tests_dir / "test_main.py").write_text("print('test')")
+            (repo_path / "README.md").write_text("# README")
+            
+            # Test multiple whitelist patterns
+            result = runner.invoke(main, [str(repo_path), '-w', 'src/', 'tests/', '--dry-run'])
+            assert result.exit_code == 0
+            assert "+src/main.py" in result.output
+            assert "+tests/test_main.py" in result.output
+            assert "+README.md" not in result.output
+            
+            # Test multiple blacklist patterns  
+            result = runner.invoke(main, [str(repo_path), '-b', 'src/', 'tests/', '--dry-run'])
+            assert result.exit_code == 0
+            assert "+src/main.py" not in result.output
+            assert "+tests/test_main.py" not in result.output
+            assert "+README.md" in result.output
+    
+    def test_legacy_config_option_removed(self):
+        """Test that -c/--config option is removed and causes error."""
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            (repo_path / "test.py").write_text("print('test')")
+            (repo_path / "custom.md").write_text("WHITELIST:\n*.py")
+            
+            # Test that -c flag causes error
+            result = runner.invoke(main, [str(repo_path), '-c', str(repo_path / "custom.md")])
+            assert result.exit_code != 0
+            
+            # Test that --config flag causes error
+            result = runner.invoke(main, [str(repo_path), '--config', str(repo_path / "custom.md")])
+            assert result.exit_code != 0
+    
+    def test_legacy_only_option_removed(self):
+        """Test that -O/--only option is removed and causes error."""
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            (repo_path / "test.py").write_text("print('test')")
+            
+            # Test that -O flag causes error
+            result = runner.invoke(main, [str(repo_path), '-O', '*.py'])
+            assert result.exit_code != 0
+            
+            # Test that --only flag causes error
+            result = runner.invoke(main, [str(repo_path), '--only', '*.py'])
+            assert result.exit_code != 0
+    
+    def test_default_output_path_is_dot_slash(self):
+        """Test that default output path is './llm-context.md' not 'llm-context.md'."""
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            (repo_path / "test.py").write_text("print('test')")
+            
+            # Run without output flag and check that file is created at ./llm-context.md
+            result = runner.invoke(main, [str(repo_path), '-w', '*.py'])
+            assert result.exit_code == 0
+            
+            # Check that output mentions ./llm-context.md
+            assert "./llm-context.md" in result.output or "llm-context.md" in result.output
+    
+    def test_enhanced_dry_run_output_shows_detailed_info(self):
+        """Test that --dry-run shows detailed info about what will and will not be kept."""
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            
+            # Create diverse file set
+            (repo_path / "main.py").write_text("print('main')")
+            (repo_path / "test.py").write_text("print('test')")
+            (repo_path / "config.json").write_text('{"key": "value"}')
+            (repo_path / "debug.log").write_text("log content")
+            (repo_path / ".hidden").write_text("hidden content")
+            
+            # Create .gitignore to exclude .log files
+            (repo_path / ".gitignore").write_text("*.log")
+            
+            # Test detailed dry-run output
+            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '*.json', '--dry-run'])
+            assert result.exit_code == 0
+            
+            # Should show included files with + prefix
+            assert "+main.py" in result.output
+            assert "+test.py" in result.output  
+            assert "+config.json" in result.output
+            
+            # Should NOT show .log file (gitignored)
+            assert "debug.log" not in result.output
+            
+            # Should NOT show hidden file (default exclusion)
+            assert ".hidden" not in result.output
+    
+    def test_error_messages_match_prd_format(self):
+        """Test that error messages for invalid combinations match PRD error conditions."""
+        runner = CliRunner()
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            
+            # Test mutually exclusive mode flags
+            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '-b', '*.log'])
+            assert result.exit_code != 0
+            assert "mutually exclusive" in result.output.lower()
+            
+            # Test pattern refinement without mode flags
+            result = runner.invoke(main, [str(repo_path), '-e', '*.log'])
+            assert result.exit_code != 0
+            assert "require" in result.output.lower() and "mode" in result.output.lower()
+    
+    def test_cli_synopsis_matches_prd(self):
+        """Test that CLI help shows synopsis: llmd [PATH] [OPTIONS]."""
+        runner = CliRunner()
+        
+        # Test help output
+        result = runner.invoke(main, ['--help'])
+        assert result.exit_code == 0
+        
+        # Should show proper usage format
+        assert "Usage:" in result.output
+        # PATH should be shown as optional in brackets
+        assert "[PATH]" in result.output or "repo_path" in result.output
