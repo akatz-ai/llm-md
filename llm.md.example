@@ -3,35 +3,51 @@
 # This file controls which files are included in the LLM context output.
 # Patterns follow gitignore syntax.
 
-ONLY:
-# When this section has patterns, ONLY these files will be included,
-# ignoring ALL exclusions (.gitignore, EXCLUDE, hidden files, binary files)
-# Use this for strict whitelisting
-# Examples:
-# src/**/*.py
-# docs/*.md
-# README.md
+# Mode declaration (REQUIRED: must be first non-comment line)
+WHITELIST:
+# Start with no files, explicitly add what you want
+src/
+lib/
+*.md
+
+# Optional configuration  
+OPTIONS:
+output: my-context.md
+respect_gitignore: true    # default: true
+include_hidden: false      # default: false  
+include_binary: false      # default: false
+
+# Explicit sections for refinement
+EXCLUDE:
+# Remove files matching these patterns
+**/__pycache__/
+**/*.test.js
+temp/
 
 INCLUDE:
-# Files matching these patterns will be rescued from exclusions
-# (they'll be included even if gitignored, hidden, or excluded)
-# Use this to include specific files that would normally be filtered out
-# Examples:
-# .github/workflows/*.yml
-# .env.example
-# build/dist.js
+# Force-include files matching these patterns (rescue from exclusions)
+.github/workflows/*.yml
+debug.log
 
-EXCLUDE:
-# Files matching these patterns will be excluded (in addition to .gitignore)
-# This section is always additive to .gitignore rules
-# Examples:
-# tests/**
-# *.test.js
-# build/
-# temp*
+# Alternative example using BLACKLIST mode:
+# BLACKLIST:
+# # Start with all files, explicitly remove what you don't want
+# tests/
+# node_modules/
+# coverage/
+# *.log
+# .git/
+# 
+# INCLUDE:
+# # Force-include specific files despite blacklist
+# tests/fixtures/
+# tests/utils.py
 
 # Notes:
-# - Sections can appear in any order
-# - Empty sections are ignored
-# - Use "NOT INCLUDE:" as an alternative name for "EXCLUDE:"
-# - CLI options take precedence over patterns in this file
+# - Mode declaration (WHITELIST: or BLACKLIST:) must be first non-comment line
+# - WHITELIST: Start with no files, add what you want
+# - BLACKLIST: Start with all files, remove what you don't want  
+# - EXCLUDE: Additional exclusions beyond gitignore
+# - INCLUDE: Force-include files that would otherwise be excluded
+# - CLI mode flags (-w/-b) completely override this file
+# - Individual CLI flags override corresponding OPTIONS

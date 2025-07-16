@@ -319,7 +319,7 @@ class TestTask6CliAlignment:
                 assert "+test.py" in result.output
     
     def test_multiple_pattern_arguments_work(self):
-        """Test that multiple patterns work for -w and -b flags: llmd . -w "src/" "tests/" """
+        """Test that multiple patterns work for -w and -b flags with multiple flag usage."""
         runner = CliRunner()
         
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -335,15 +335,15 @@ class TestTask6CliAlignment:
             (tests_dir / "test_main.py").write_text("print('test')")
             (repo_path / "README.md").write_text("# README")
             
-            # Test multiple whitelist patterns
-            result = runner.invoke(main, [str(repo_path), '-w', 'src/', 'tests/', '--dry-run'])
+            # Test multiple whitelist patterns using multiple -w flags
+            result = runner.invoke(main, [str(repo_path), '-w', 'src/', '-w', 'tests/', '--dry-run'])
             assert result.exit_code == 0
             assert "+src/main.py" in result.output
             assert "+tests/test_main.py" in result.output
             assert "+README.md" not in result.output
             
-            # Test multiple blacklist patterns  
-            result = runner.invoke(main, [str(repo_path), '-b', 'src/', 'tests/', '--dry-run'])
+            # Test multiple blacklist patterns using multiple -b flags
+            result = runner.invoke(main, [str(repo_path), '-b', 'src/', '-b', 'tests/', '--dry-run'])
             assert result.exit_code == 0
             assert "+src/main.py" not in result.output
             assert "+tests/test_main.py" not in result.output
@@ -415,7 +415,7 @@ class TestTask6CliAlignment:
             (repo_path / ".gitignore").write_text("*.log")
             
             # Test detailed dry-run output
-            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '*.json', '--dry-run'])
+            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '-w', '*.json', '--dry-run'])
             assert result.exit_code == 0
             
             # Should show included files with + prefix
@@ -457,4 +457,4 @@ class TestTask6CliAlignment:
         # Should show proper usage format
         assert "Usage:" in result.output
         # PATH should be shown as optional in brackets
-        assert "[PATH]" in result.output or "repo_path" in result.output
+        assert "[REPO_PATH]" in result.output or "[PATH]" in result.output
