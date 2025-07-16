@@ -1,0 +1,1 @@
+Run an audit on the current detector and recreator code under comfyui_detector/ and compare how closely it matches the expected APIs and implementation defined in the @backlog/docs/CEC-PRD.md. If there are any discrepancies write a task to bring the code into alignment with the PRD via the backlog task management tool explained in @backlog/docs/backlog-usage.md
