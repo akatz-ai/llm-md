@@ -471,3 +471,149 @@ OPTIONS:
             
         finally:
             config_path.unlink()
+
+
+# TDD Tests for Default Behavior (Task 1)
+
+class TestLlmMdParserDefaultBehavior:
+    """Test default behavior when no llm.md exists (Task 1)."""
+    
+    def test_parser_with_default_blacklist_mode(self):
+        """Test LlmMdParser constructor with default_mode parameter."""
+        # No config file exists, but pass default_mode
+        parser = LlmMdParser(None, default_mode="BLACKLIST")
+        
+        # Should have BLACKLIST mode set
+        assert parser.get_mode() == "BLACKLIST"
+        
+        # Should have no explicit patterns (empty patterns for blacklist mode)
+        assert parser.get_implicit_patterns() == []
+        
+        # Should have default options set
+        options = parser.get_options()
+        assert options.get("output", "llm-context.md") == "llm-context.md"
+        assert options.get("respect_gitignore", True) is True
+        assert options.get("include_hidden", False) is False
+        assert options.get("include_binary", False) is False
+    
+    def test_parser_with_default_whitelist_mode(self):
+        """Test LlmMdParser constructor with default_mode="WHITELIST"."""
+        parser = LlmMdParser(None, default_mode="WHITELIST")
+        
+        assert parser.get_mode() == "WHITELIST"
+        assert parser.get_implicit_patterns() == []
+    
+    def test_parser_without_default_mode_unchanged(self):
+        """Test that existing behavior without default_mode is unchanged."""
+        parser = LlmMdParser(None)  # No default_mode provided
+        
+        # Should behave as before (None mode, empty patterns)
+        assert parser.get_mode() is None
+        assert parser.get_implicit_patterns() == []
+        assert parser.get_options() == {}
+    
+    def test_parser_existing_file_overrides_default_mode(self):
+        """Test that existing llm.md file overrides default_mode parameter."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+*.py
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            # Even with default_mode="BLACKLIST", existing file should take precedence
+            parser = LlmMdParser(config_path, default_mode="BLACKLIST")
+            
+            assert parser.get_mode() == "WHITELIST"
+            assert parser.get_implicit_patterns() == ["src/", "*.py"]
+            
+        finally:
+            config_path.unlink()
+    
+    def test_default_sections_structure(self):
+        """Test that default mode creates proper sections structure."""
+        parser = LlmMdParser(None, default_mode="BLACKLIST")
+        
+        sections = parser.get_sections()
+        # Should have one section for the BLACKLIST mode with empty patterns
+        assert len(sections) == 1
+        assert sections[0]["type"] == "BLACKLIST"
+        assert sections[0]["patterns"] == []
+
+
+class TestDefaultBehaviorIntegration:
+    """Integration tests for default behavior when no llm.md exists."""
+    
+    def test_cli_missing_llm_md_default_behavior(self):
+        """Test CLI behavior when no llm.md file exists."""
+        import tempfile
+        from llmd.cli import main
+        from click.testing import CliRunner
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            
+            # Create some test files
+            (repo_path / "main.py").write_text("print('hello')")
+            (repo_path / "README.md").write_text("# Project")
+            (repo_path / ".hidden").write_text("hidden file")
+            (repo_path / "test.pyc").write_text("binary")  # Should be excluded as binary
+            
+            # Create .gitignore
+            (repo_path / ".gitignore").write_text("*.log\ntemp/")
+            (repo_path / "debug.log").write_text("log content")
+            
+            # NO llm.md file exists
+            
+            runner = CliRunner()
+            result = runner.invoke(main, [str(repo_path), '--dry-run'])
+            
+            # Should succeed (not crash)
+            assert result.exit_code == 0
+            
+            # Should include normal files
+            assert "+main.py" in result.output
+            assert "+README.md" in result.output
+            
+            # Should exclude hidden files by default
+            assert "+.hidden" not in result.output
+            
+            # Should exclude binary files by default  
+            assert "+test.pyc" not in result.output
+            
+            # Should exclude gitignored files by default
+            assert "+debug.log" not in result.output
+    
+    def test_scanner_default_blacklist_behavior(self):
+        """Test RepoScanner with default BLACKLIST mode and empty patterns."""
+        from llmd.scanner import RepoScanner
+        from llmd.parser import GitignoreParser
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            
+            # Create test files
+            (repo_path / "main.py").write_text("print('hello')")
+            (repo_path / "README.md").write_text("# Project")
+            (repo_path / ".hidden").write_text("hidden")
+            (repo_path / "test.pyc").write_text("binary")
+            
+            # Create parser with default blacklist mode
+            gitignore_parser = GitignoreParser(repo_path)
+            llm_parser = LlmMdParser(None, default_mode="BLACKLIST")
+            
+            scanner = RepoScanner(repo_path, gitignore_parser, llm_parser)
+            files = scanner.scan()
+            
+            # Convert to relative paths for easier checking
+            rel_files = [f.relative_to(repo_path) for f in files]
+            
+            # Should include normal files in BLACKLIST mode with no exclusion patterns
+            assert Path("main.py") in rel_files
+            assert Path("README.md") in rel_files
+            
+            # Should exclude hidden and binary files by default exclusions
+            assert Path(".hidden") not in rel_files
+            assert Path("test.pyc") not in rel_files
