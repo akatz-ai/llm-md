@@ -245,3 +245,229 @@ __pycache__/
             
             # Nothing should be ignored
             assert parser.should_ignore(repo_path / "any_file.txt") is False
+
+
+# TDD Tests for New Mode-Based Format
+
+class TestLlmMdParserNewFormat:
+    """Test the new mode-based format for LlmMdParser."""
+    
+    def test_parse_whitelist_mode_with_implicit_patterns(self):
+        """Test parsing WHITELIST mode with implicit patterns."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+lib/
+*.py
+README.md
+
+EXCLUDE:
+**/__pycache__/
+**/*.test.js
+
+INCLUDE:
+tests/fixtures/
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            # New methods that should be implemented
+            assert parser.get_mode() == "WHITELIST"
+            
+            sections = parser.get_sections()
+            assert len(sections) == 3  # WHITELIST (implicit), EXCLUDE, INCLUDE
+            
+            # Check implicit patterns (patterns after mode declaration)
+            implicit_patterns = parser.get_implicit_patterns()
+            assert implicit_patterns == ["src/", "lib/", "*.py", "README.md"]
+            
+        finally:
+            config_path.unlink()
+    
+    def test_parse_blacklist_mode_with_implicit_patterns(self):
+        """Test parsing BLACKLIST mode with implicit patterns."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""BLACKLIST:
+tests/
+node_modules/
+*.log
+coverage/
+
+INCLUDE:
+tests/fixtures/
+debug.log
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            assert parser.get_mode() == "BLACKLIST"
+            
+            sections = parser.get_sections()
+            assert len(sections) == 2  # BLACKLIST (implicit), INCLUDE
+            
+            implicit_patterns = parser.get_implicit_patterns()
+            assert implicit_patterns == ["tests/", "node_modules/", "*.log", "coverage/"]
+            
+        finally:
+            config_path.unlink()
+    
+    def test_parse_options_section(self):
+        """Test parsing of OPTIONS section with type conversion."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+
+OPTIONS:
+output: my-context.md
+respect_gitignore: true
+include_hidden: false
+max_file_size: 1024
+debug_level: 2
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            options = parser.get_options()
+            assert options["output"] == "my-context.md"
+            assert options["respect_gitignore"] is True
+            assert options["include_hidden"] is False
+            assert options["max_file_size"] == 1024
+            assert options["debug_level"] == 2
+            
+        finally:
+            config_path.unlink()
+    
+    def test_mode_declaration_required_first(self):
+        """Test that mode declaration must be first non-comment line."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""# Comment is ok
+src/
+lib/
+WHITELIST:
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            # This should raise an error or handle gracefully
+            parser = LlmMdParser(config_path)
+            # Should fail validation - no mode declared first
+            assert parser.get_mode() is None or parser.get_mode() == ""
+            
+        finally:
+            config_path.unlink()
+    
+    def test_get_sections_returns_ordered_list(self):
+        """Test that get_sections returns sections in parsing order."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""BLACKLIST:
+*.tmp
+
+EXCLUDE:
+tests/
+
+INCLUDE:
+tests/fixtures/
+
+EXCLUDE:
+coverage/
+
+OPTIONS:
+output: test.md
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            sections = parser.get_sections()
+            # Should maintain order: BLACKLIST, EXCLUDE, INCLUDE, EXCLUDE, OPTIONS
+            section_types = [section['type'] for section in sections]
+            assert section_types == ["BLACKLIST", "EXCLUDE", "INCLUDE", "EXCLUDE", "OPTIONS"]
+            
+        finally:
+            config_path.unlink()
+    
+    def test_invalid_configuration_handling(self):
+        """Test graceful handling of invalid configurations."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""# Missing mode declaration
+src/
+lib/
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            # Should handle gracefully without crashing
+            parser = LlmMdParser(config_path)
+            assert parser.get_mode() is None
+            
+        finally:
+            config_path.unlink()
+    
+    def test_options_type_conversion(self):
+        """Test that OPTIONS values are converted to appropriate types."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+
+OPTIONS:
+string_value: hello world
+boolean_true: true
+boolean_false: false
+integer_value: 42
+float_value: 3.14
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            options = parser.get_options()
+            assert isinstance(options["string_value"], str)
+            assert options["string_value"] == "hello world"
+            assert isinstance(options["boolean_true"], bool)
+            assert options["boolean_true"] is True
+            assert isinstance(options["boolean_false"], bool)
+            assert options["boolean_false"] is False
+            assert isinstance(options["integer_value"], int)
+            assert options["integer_value"] == 42
+            # Note: float parsing might be optional for first implementation
+            
+        finally:
+            config_path.unlink()
+    
+    def test_empty_mode_sections(self):
+        """Test handling of empty mode sections."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+
+EXCLUDE:
+
+INCLUDE:
+
+OPTIONS:
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            
+            assert parser.get_mode() == "WHITELIST"
+            assert parser.get_implicit_patterns() == []
+            assert parser.get_options() == {}
+            
+        finally:
+            config_path.unlink()
