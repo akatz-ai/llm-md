@@ -42,7 +42,7 @@ class GitignoreParser:
 class LlmMdParser:
     """Parse llm.md configuration file."""
     
-    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, cli_only: Optional[List[str]] = None, default_mode: Optional[str] = None):
+    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, cli_only: Optional[List[str]] = None, default_mode: Optional[str] = None, cli_mode: Optional[str] = None, cli_patterns: Optional[List[str]] = None, cli_behavior_overrides: Optional[Dict[str, Any]] = None):
         self.config_path = config_path
         self.default_mode = default_mode
         # Legacy format attributes
@@ -59,8 +59,58 @@ class LlmMdParser:
         self.sections: List[Dict[str, Any]] = []
         self.options: Dict[str, Any] = {}
         
-        self._parse_config()
+        # CLI mode override attributes
+        self.cli_mode = cli_mode
+        self.cli_patterns = cli_patterns or []
+        self.cli_behavior_overrides = cli_behavior_overrides or {}
+        
+        # Initialize configuration
+        if cli_mode:
+            self._setup_cli_override()
+        else:
+            self._parse_config()
     
+    def _setup_cli_override(self):
+        """Set up configuration from CLI mode override (completely ignores config file)."""
+        self.mode = self.cli_mode
+        self.implicit_patterns = self.cli_patterns
+        
+        # Create sections for CLI mode
+        self.sections = []
+        
+        # Add mode section with CLI patterns
+        mode_section = {
+            'type': self.cli_mode,
+            'patterns': self.cli_patterns
+        }
+        self.sections.append(mode_section)
+        
+        # Add pattern refinement sections if provided
+        if self.cli_exclude:
+            exclude_section = {
+                'type': 'EXCLUDE',
+                'patterns': self.cli_exclude
+            }
+            self.sections.append(exclude_section)
+            
+        if self.cli_include:
+            include_section = {
+                'type': 'INCLUDE', 
+                'patterns': self.cli_include
+            }
+            self.sections.append(include_section)
+        
+        # Set up options with CLI behavior overrides and defaults
+        self.options = {
+            'output': 'llm-context.md',
+            'respect_gitignore': True,
+            'include_hidden': False,
+            'include_binary': False
+        }
+        
+        # Apply CLI behavior overrides
+        self.options.update(self.cli_behavior_overrides)
+
     def _setup_default_config(self):
         """Set up default configuration when no llm.md file exists."""
         self.mode = self.default_mode
