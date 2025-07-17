@@ -1,1 +1,2 @@
-Immediately checkout a new git branch with the name $ARGUMENTS, and commit the current changes to that new branch
+Immediately checkout a new git branch with the name: $ARGUMENTS, and commit the current changes to that new branch
+(NOTE: if the name above is blank, then come up with a logical new checkpoint name based on the other git branch names and git log)
