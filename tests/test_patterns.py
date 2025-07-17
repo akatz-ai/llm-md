@@ -85,29 +85,30 @@ __pycache__/
         assert "image.png" not in file_names  # binary
         assert "archive.zip" not in file_names  # binary
     
-    def test_only_patterns(self, temp_repo):
-        """Test ONLY patterns bypass all exclusions."""
+    def test_only_patterns_removed(self, temp_repo):
+        """Test that ONLY patterns are no longer supported (Task 11)."""
         gitignore_parser = GitignoreParser(temp_repo)
-        llm_parser = LlmMdParser(None, cli_only=["*.py", ".github/**", "build/*.js"])
+        # cli_only parameter should no longer exist
+        llm_parser = LlmMdParser(None)
         scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
         
         files = scanner.scan()
         file_paths = [str(f.relative_to(temp_repo)) for f in files]
         
-        # Should include only matched files, even if gitignored or hidden
+        # Without ONLY patterns, should behave like default (include all non-excluded files)
         assert "main.py" in file_paths
         assert "test.py" in file_paths
         assert "src/module.py" in file_paths
         assert "src/utils.py" in file_paths
-        assert "src/.hidden_module.py" in file_paths  # hidden but matches
-        assert ".github/workflows/test.yml" in file_paths  # hidden dir but matches
-        assert "build/output.js" in file_paths  # gitignored but matches
+        assert "README.md" in file_paths
+        assert "data.json" in file_paths
         
-        # Should exclude non-matching files
-        assert "README.md" not in file_paths
-        assert ".hidden_file" not in file_paths
-        assert "data.json" not in file_paths
-        assert "__pycache__/cache.pyc" not in file_paths  # doesn't match pattern
+        # Should still exclude hidden files, gitignored files, and binary files by default
+        assert "src/.hidden_module.py" not in file_paths  # hidden
+        assert ".github/workflows/test.yml" not in file_paths  # hidden dir
+        assert "build/output.js" not in file_paths  # gitignored
+        assert ".hidden_file" not in file_paths  # hidden
+        assert "__pycache__/cache.pyc" not in file_paths  # gitignored
     
     def test_include_patterns_rescue(self, temp_repo):
         """Test INCLUDE patterns rescue files from exclusions."""
@@ -155,23 +156,11 @@ __pycache__/
         assert "api.md" not in file_names
         assert "utils.py" not in file_names
     
-    def test_pattern_precedence(self, temp_repo):
-        """Test the precedence: ONLY > INCLUDE rescue > normal exclusions."""
+    def test_pattern_precedence_without_only(self, temp_repo):
+        """Test the precedence: INCLUDE rescue > normal exclusions (Task 11: ONLY removed)."""
         gitignore_parser = GitignoreParser(temp_repo)
         
-        # Test 1: ONLY overrides everything
-        llm_parser = LlmMdParser(None, 
-                                cli_only=["build/*.js"],
-                                cli_include=["*.md"],
-                                cli_exclude=["build/*"])
-        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
-        files = scanner.scan()
-        file_paths = [str(f.relative_to(temp_repo)) for f in files]
-        
-        # Only build/*.js should be included despite exclude pattern
-        assert file_paths == ["build/output.js"]
-        
-        # Test 2: INCLUDE rescues from exclusions when no ONLY
+        # Test INCLUDE rescues from exclusions (no more ONLY patterns)
         llm_parser = LlmMdParser(None,
                                 cli_include=["build/*.js", "*.md"],
                                 cli_exclude=["*.md"])
@@ -186,17 +175,15 @@ __pycache__/
         # Regular files still included
         assert "main.py" in file_paths
     
-    def test_llm_md_file_patterns(self, temp_repo):
-        """Test patterns from llm.md file."""
-        # Create llm.md with patterns
+    def test_llm_md_file_patterns_without_only(self, temp_repo):
+        """Test patterns from llm.md file without ONLY patterns (Task 11)."""
+        # Create llm.md with patterns (ONLY section removed)
         llm_md_content = """# Test llm.md
-
-ONLY:
-*.py
-.github/**
 
 INCLUDE:
 build/*.js
+.github/**
+*.py
 
 EXCLUDE:
 test.py
@@ -212,22 +199,25 @@ test.py
         files = scanner.scan()
         file_paths = [str(f.relative_to(temp_repo)) for f in files]
         
-        # ONLY patterns should take precedence
-        assert "main.py" in file_paths
-        assert "src/module.py" in file_paths
-        assert ".github/workflows/test.yml" in file_paths
+        # Should include normal files plus rescued files
+        assert "main.py" in file_paths  # rescued by INCLUDE *.py
+        assert "src/module.py" in file_paths  # rescued by INCLUDE *.py
+        assert ".github/workflows/test.yml" in file_paths  # rescued by INCLUDE .github/**
+        assert "build/output.js" in file_paths  # rescued by INCLUDE build/*.js
+        assert "README.md" in file_paths  # normal file
         
-        # Files not matching ONLY patterns should be excluded
-        assert "README.md" not in file_paths
-        assert "build/output.js" not in file_paths  # INCLUDE ignored when ONLY exists
+        # test.py matches both INCLUDE *.py and EXCLUDE test.py
+        # According to PRD, INCLUDE should force-include files that would otherwise be excluded
+        assert "test.py" in file_paths  # force-included by INCLUDE *.py despite EXCLUDE test.py
+        
+        # src/utils.py matches both INCLUDE *.py and EXCLUDE **/utils.py
+        # According to PRD, INCLUDE should force-include files that would otherwise be excluded  
+        assert "src/utils.py" in file_paths  # force-included by INCLUDE *.py despite EXCLUDE **/utils.py
     
-    def test_cli_overrides_file_patterns(self, temp_repo):
-        """Test CLI patterns override file patterns."""
-        # Create llm.md with patterns
+    def test_cli_overrides_file_patterns_without_only(self, temp_repo):
+        """Test CLI patterns override file patterns (Task 11: ONLY patterns removed)."""
+        # Create llm.md with patterns (no ONLY section)
         llm_md_content = """
-ONLY:
-*.md
-
 INCLUDE:
 *.py
 
@@ -238,27 +228,6 @@ README.md
         llm_md_path.write_text(llm_md_content)
         
         gitignore_parser = GitignoreParser(temp_repo)
-        
-        # CLI only patterns should override file only patterns
-        llm_parser = LlmMdParser(llm_md_path, cli_only=["*.py"])
-        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
-        files = scanner.scan()
-        file_paths = [str(f.relative_to(temp_repo)) for f in files]
-        
-        # Should use CLI only pattern, not file only pattern
-        assert "main.py" in file_paths
-        assert "README.md" not in file_paths
-        
-        # When file has ONLY patterns but CLI has none, file ONLY patterns still apply
-        # Create a new llm.md without ONLY patterns to test include override
-        llm_md_content2 = """
-INCLUDE:
-*.py
-
-EXCLUDE:
-README.md
-"""
-        llm_md_path.write_text(llm_md_content2)
         
         # CLI include patterns should override file include patterns
         llm_parser = LlmMdParser(llm_md_path, cli_include=["*.json"])
@@ -280,27 +249,28 @@ README.md
         assert "index.md" not in file_names  # excluded by CLI
     
     def test_complex_patterns(self, temp_repo):
-        """Test complex glob patterns."""
+        """Test complex glob patterns (Task 11: ONLY patterns removed)."""
         gitignore_parser = GitignoreParser(temp_repo)
         
-        # Test wildcard patterns
-        llm_parser = LlmMdParser(None, cli_only=["**/*.py", "!**/__pycache__/**"])
+        # Test wildcard patterns with include instead of only
+        llm_parser = LlmMdParser(None, cli_include=["**/*.py"])
         scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
         files = scanner.scan()
         file_paths = [str(f.relative_to(temp_repo)) for f in files]
         
+        # Should include all files plus rescued Python files
         assert "main.py" in file_paths
         assert "src/module.py" in file_paths
-        assert "src/.hidden_module.py" in file_paths
-        # Note: pathspec doesn't support ! negation, so __pycache__ would be included
-        # if it had .py files matching the pattern
+        assert "README.md" in file_paths  # also included (not only Python files)
+        # Hidden Python files should be rescued by INCLUDE pattern
+        assert "src/.hidden_module.py" in file_paths  # rescued by **/*.py pattern
     
     def test_empty_patterns(self, temp_repo):
-        """Test behavior with empty pattern lists."""
+        """Test behavior with empty pattern lists (Task 11: cli_only removed)."""
         gitignore_parser = GitignoreParser(temp_repo)
         
-        # Empty lists should behave like no patterns
-        llm_parser = LlmMdParser(None, cli_only=[], cli_include=[], cli_exclude=[])
+        # Empty lists should behave like no patterns (cli_only parameter removed)
+        llm_parser = LlmMdParser(None, cli_include=[], cli_exclude=[])
         scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
         files = scanner.scan()
         
@@ -325,6 +295,7 @@ class TestSequentialPatternProcessing:
             "README.md",
             "main.py",
             "test.py", 
+            "test_main.py",  # Added to test test_*.py pattern
             ".hidden_file",
             ".github/workflows/test.yml",
             "src/module.py",
@@ -614,14 +585,12 @@ OPTIONS:
         # This tests the edge case handling
         assert isinstance(files, list)
     
-    def test_legacy_format_still_works(self, temp_repo):
-        """Test that existing legacy ONLY/INCLUDE/EXCLUDE format still works."""
-        # Create llm.md with legacy format (no mode declaration)
-        llm_md_content = """ONLY:
-*.py
-
-INCLUDE:
+    def test_legacy_format_without_only_still_works(self, temp_repo):
+        """Test that legacy INCLUDE/EXCLUDE format still works (Task 11: ONLY removed)."""
+        # Create llm.md with legacy format (no mode declaration, no ONLY section)
+        llm_md_content = """INCLUDE:
 *.md
+*.py
 
 EXCLUDE:
 test_*.py
@@ -636,10 +605,12 @@ test_*.py
         files = scanner.scan()
         file_paths = [str(f.relative_to(temp_repo)) for f in files]
         
-        # Should behave like before - ONLY patterns take precedence
-        assert "main.py" in file_paths
-        assert "test.py" in file_paths  # ONLY overrides EXCLUDE
-        assert "src/module.py" in file_paths
+        # Should include all normal files plus rescued files
+        assert "main.py" in file_paths  # rescued by INCLUDE
+        assert "src/module.py" in file_paths  # rescued by INCLUDE
+        assert "README.md" in file_paths  # rescued by INCLUDE
+        assert "docs/index.md" in file_paths  # rescued by INCLUDE
+        assert "data.json" in file_paths  # normal file
         
-        # Should not include non-matching files even if INCLUDE exists
-        assert "README.md" not in file_paths  # ONLY takes precedence over INCLUDE
+        # Should exclude based on EXCLUDE patterns
+        assert "test_main.py" not in file_paths  # excluded by test_*.py pattern

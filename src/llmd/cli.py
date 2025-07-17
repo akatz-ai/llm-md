@@ -365,7 +365,6 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
                 config_path=None,  # Ignore config file completely
                 cli_include=list(include), 
                 cli_exclude=list(exclude), 
-                cli_only=[],  # No CLI only patterns (option removed)
                 cli_mode=cli_mode,
                 cli_patterns=cli_patterns,
                 cli_behavior_overrides=cli_behavior_overrides
@@ -376,7 +375,6 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
                 llm_config_path, 
                 cli_include=list(include), 
                 cli_exclude=list(exclude), 
-                cli_only=[],  # No CLI only patterns (option removed)
                 default_mode=default_mode
             )
     

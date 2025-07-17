@@ -33,7 +33,7 @@ class TestGitHubUrlValidation:
         for url in valid_urls:
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = "/tmp/cloned_repo"
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     # Should not fail due to URL validation
                     result = runner.invoke(main, ['--github', url, '--dry-run'])
                     # We expect this to fail for other reasons (like git not being available)
@@ -70,7 +70,7 @@ class TestGitHubUrlValidation:
         for url in ssh_urls:
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = "/tmp/cloned_repo"
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     result = runner.invoke(main, ['--github', url, '--dry-run'])
                     assert "Invalid GitHub URL" not in result.output
 
@@ -84,7 +84,7 @@ class TestGitHubCloneIntegration:
         
         with patch('llmd.cli.clone_github_repo') as mock_clone:
             mock_clone.return_value = "/tmp/cloned_repo"
-            with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+            with patch('llmd.cli.cleanup_temp_repo'):
                 # Should work without PATH when using --github
                 result = runner.invoke(main, ['--github', 'https://github.com/user/repo', '--dry-run'])
                 # Should not complain about missing PATH
@@ -98,7 +98,7 @@ class TestGitHubCloneIntegration:
             # Mock the clone to return our temp directory
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = temp_dir
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     
                     # Create test files in temp directory
                     Path(temp_dir, "test.py").write_text("print('hello')")
@@ -121,7 +121,7 @@ class TestGitHubCloneIntegration:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = temp_dir
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     
                     # Create test files in temp directory
                     Path(temp_dir, "test.py").write_text("print('hello')")
@@ -146,7 +146,7 @@ class TestGitHubCloneIntegration:
             
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = temp_dir
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     
                     # Create test file in temp directory
                     Path(temp_dir, "test.py").write_text("print('hello')")
@@ -168,7 +168,7 @@ class TestGitHubCloneIntegration:
         with tempfile.TemporaryDirectory() as temp_dir:
             with patch('llmd.cli.clone_github_repo') as mock_clone:
                 mock_clone.return_value = temp_dir
-                with patch('llmd.cli.cleanup_temp_repo') as mock_cleanup:
+                with patch('llmd.cli.cleanup_temp_repo'):
                     
                     # Create test files
                     Path(temp_dir, "main.py").write_text("print('main')")
@@ -286,13 +286,13 @@ class TestGitHubErrorHandling:
         
         with patch('llmd.cli.clone_github_repo') as mock_clone:
             mock_clone.return_value = "/tmp/test_repo"
-            with patch('llmd.cli.cleanup_temp_repo', side_effect=mock_cleanup) as mock_cleanup_patch:
+            with patch('llmd.cli.cleanup_temp_repo', side_effect=mock_cleanup):
                 
                 # Force an error after cloning (e.g., scanner error)
                 with patch('llmd.cli.RepoScanner') as mock_scanner:
                     mock_scanner.side_effect = Exception("Scanner error")
                     
-                    result = runner.invoke(main, ['--github', 'https://github.com/user/repo'])
+                    runner.invoke(main, ['--github', 'https://github.com/user/repo'])
                     
                     # Should still call cleanup even on error
                     assert cleanup_called

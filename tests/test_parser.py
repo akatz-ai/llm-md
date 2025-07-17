@@ -6,16 +6,12 @@ from llmd.parser import LlmMdParser, GitignoreParser
 class TestLlmMdParser:
     """Test the LlmMdParser class."""
     
-    def test_parse_llm_md_file(self):
-        """Test parsing of llm.md file with all sections."""
+    def test_parse_legacy_format_fallback_without_only(self):
+        """Test parsing of legacy format without ONLY patterns (Task 11: ONLY patterns removed)."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
             f.write("""# Project Configuration
 
 Some description here.
-
-ONLY:
-*.py
-src/**/*.js
 
 INCLUDE:
 .github/workflows/*.yml
@@ -35,7 +31,8 @@ temp/*
         try:
             parser = LlmMdParser(config_path)
             
-            assert parser.only_patterns == ["*.py", "src/**/*.js"]
+            # ONLY patterns should not exist anymore
+            assert not hasattr(parser, 'only_patterns') or parser.only_patterns == []
             assert parser.include_patterns == [".github/workflows/*.yml", "docs/*.md"]
             # Both EXCLUDE and NOT INCLUDE should go to exclude_patterns
             assert parser.exclude_patterns == ["test_*.py", "**/node_modules/**", "*.log", "temp/*"]
@@ -43,11 +40,9 @@ temp/*
             config_path.unlink()
     
     def test_empty_sections(self):
-        """Test parsing with empty sections."""
+        """Test parsing with empty sections (Task 11: ONLY section removed)."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-            f.write("""ONLY:
-
-INCLUDE:
+            f.write("""INCLUDE:
 
 EXCLUDE:
 """)
@@ -57,26 +52,23 @@ EXCLUDE:
         try:
             parser = LlmMdParser(config_path)
             
-            assert parser.only_patterns == []
+            # ONLY patterns should not exist anymore
+            assert not hasattr(parser, 'only_patterns') or parser.only_patterns == []
             assert parser.include_patterns == []
             assert parser.exclude_patterns == []
         finally:
             config_path.unlink()
     
     def test_comments_and_whitespace(self):
-        """Test parsing handles comments and whitespace correctly."""
+        """Test parsing handles comments and whitespace correctly (Task 11: ONLY section removed)."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
             f.write("""
 # This is a comment
-ONLY:
-  *.py  
-# Another comment
-  src/*.js
-
 INCLUDE:
 
     # Indented comment
     .github/**
+    *.py
     
 EXCLUDE:
 *.tmp
@@ -88,19 +80,17 @@ EXCLUDE:
         try:
             parser = LlmMdParser(config_path)
             
-            assert parser.only_patterns == ["*.py", "src/*.js"]
-            assert parser.include_patterns == [".github/**"]
+            # ONLY patterns should not exist anymore
+            assert not hasattr(parser, 'only_patterns') or parser.only_patterns == []
+            assert parser.include_patterns == [".github/**", "*.py"]
             assert parser.exclude_patterns == ["*.tmp"]
         finally:
             config_path.unlink()
     
     def test_cli_patterns_override(self):
-        """Test CLI patterns override behavior."""
+        """Test CLI patterns override behavior (Task 11: cli_only removed)."""
         with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
             f.write("""
-ONLY:
-*.md
-
 INCLUDE:
 *.py
 
@@ -111,55 +101,55 @@ README.md
             config_path = Path(f.name)
         
         try:
-            # Test CLI overrides
+            # Test CLI overrides (cli_only parameter should be removed)
             parser = LlmMdParser(
                 config_path,
-                cli_only=["*.txt"],
                 cli_include=["*.json"],
                 cli_exclude=["*.log"]
             )
             
             # File patterns should still be loaded
-            assert parser.only_patterns == ["*.md"]
+            assert not hasattr(parser, 'only_patterns') or parser.only_patterns == []
             assert parser.include_patterns == ["*.py"]
             assert parser.exclude_patterns == ["README.md"]
             
-            # CLI patterns should be stored separately
-            assert parser.cli_only == ["*.txt"]
+            # CLI patterns should be stored separately (cli_only should not exist)
+            assert not hasattr(parser, 'cli_only') or parser.cli_only == []
             assert parser.cli_include == ["*.json"]
             assert parser.cli_exclude == ["*.log"]
         finally:
             config_path.unlink()
     
     def test_pattern_checking_methods(self):
-        """Test the pattern checking methods."""
+        """Test the pattern checking methods (Task 11: ONLY pattern methods removed)."""
         parser = LlmMdParser(None, 
-                            cli_only=["*.py"],
                             cli_include=["*.md"],
                             cli_exclude=["test_*"])
         
-        # Test has_only_patterns
-        assert parser.has_only_patterns() is True
+        # Test has_only_patterns should not exist or return False
+        if hasattr(parser, 'has_only_patterns'):
+            assert parser.has_only_patterns() is False
         
         # Test has_include_patterns
         assert parser.has_include_patterns() is True
         
         # Test with empty patterns
         parser2 = LlmMdParser(None)
-        assert parser2.has_only_patterns() is False
+        if hasattr(parser2, 'has_only_patterns'):
+            assert parser2.has_only_patterns() is False
         assert parser2.has_include_patterns() is False
     
-    def test_matches_only(self):
-        """Test the matches_only method."""
+    def test_matches_only_method_removed(self):
+        """Test that matches_only method is removed (Task 11)."""
         with tempfile.TemporaryDirectory() as temp_dir:
             repo_path = Path(temp_dir)
             test_file = repo_path / "test.py"
             test_file.write_text("test")
             
-            parser = LlmMdParser(None, cli_only=["*.py"])
+            parser = LlmMdParser(None)
             
-            assert parser.matches_only(test_file, repo_path) is True
-            assert parser.matches_only(repo_path / "test.md", repo_path) is False
+            # matches_only method should not exist
+            assert not hasattr(parser, 'matches_only')
     
     def test_should_include(self):
         """Test the should_include method."""
