@@ -9,7 +9,6 @@ This file tests the new GitHub remote repository functionality:
 """
 
 import tempfile
-import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner

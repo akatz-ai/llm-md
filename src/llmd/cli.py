@@ -183,19 +183,31 @@ def cleanup_temp_repo(temp_dir: str) -> None:
 
 
 class FlexibleGroup(click.Group):
-    def get_command(self, ctx, cmd_name):
-        # If command exists, return it
-        rv = super().get_command(ctx, cmd_name)
-        if rv is not None:
-            return rv
+    def resolve_command(self, ctx, args):
+        # Check if first argument is a directory path
+        if args and Path(args[0]).exists() and Path(args[0]).is_dir():
+            # Create a dummy command that will invoke the main callback with the path
+            dummy_cmd = PathCommand(name=args[0], callback=self.callback, parent=self)
+            return args[0], dummy_cmd, args[1:]
         
-        # If no command found, and this looks like a path (exists as directory), 
-        # treat it as an argument for the main command
-        if Path(cmd_name).exists() and Path(cmd_name).is_dir():
-            return None  # This will cause invoke_without_command to be called
-        
-        # Otherwise, it's an unknown command
-        return rv
+        # Otherwise use normal command resolution
+        return super().resolve_command(ctx, args)
+
+
+class PathCommand(click.Command):
+    """A dummy command that handles directory path arguments"""
+    
+    def __init__(self, name, callback, parent):
+        # Initialize as a command with the same parameters as the parent
+        super().__init__(name=name, callback=callback, params=parent.params.copy())
+        self.parent_group = parent
+    
+    def make_context(self, info_name, args, parent=None, **extra):
+        # Create context but pass the path as an extra arg
+        ctx = super().make_context(info_name, args, parent, **extra)
+        # Put the path (command name) in args so main() can access it
+        ctx.args = [info_name] + ctx.args
+        return ctx
 
 @click.group(cls=FlexibleGroup, invoke_without_command=True, context_settings={'allow_extra_args': True, 'allow_interspersed_args': False})
 @click.version_option(version=__version__, prog_name='llmd')
@@ -265,7 +277,7 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
                 click.echo(f"Repository cloned to: {temp_repo_dir}")
         
         else:
-            # Handle repository path from extra args (existing logic)
+            # Handle repository path from extra args
             extra_args = ctx.args
             if len(extra_args) > 1:
                 raise click.UsageError("Too many arguments. Expected at most one repository path.")
