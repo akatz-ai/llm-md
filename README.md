@@ -1,172 +1,397 @@
 # llmd
 
-A CLI tool for generating LLM context from GitHub repositories. This tool scans through files in a repository and creates a single markdown file containing all relevant code, making it easy to provide context to Large Language Models.
+A command-line tool that generates consolidated markdown files containing code repository contents for use with Large Language Models (LLMs). It provides flexible file filtering through whitelist/blacklist patterns, respects gitignore rules, and includes GitHub remote repository support.
 
 ## Features
 
-- Automatically respects `.gitignore` patterns
-- Automatically detects and uses `llm.md` configuration file in repository root
-- Additional filtering via `llm.md` configuration file
-- Command-line include/exclude patterns with `--include` and `--exclude`
-- Dry run mode to preview files without generating output
-- Generates table of contents for easy navigation
-- Syntax highlighting for various programming languages
-- Skips binary and non-text files automatically
+- **Flexible Filtering**: Whitelist and blacklist modes with pattern refinement
+- **GitHub Integration**: Clone and process remote GitHub repositories
+- **Smart Defaults**: Automatically excludes gitignored, hidden, and binary files
+- **Configuration File**: Optional `llm.md` configuration file support
+- **Template Generation**: Built-in `init` command to create configuration templates
+- **Pattern Matching**: Full gitignore-style glob pattern support
+- **Dry Run Mode**: Preview files without generating output
+- **Multiple Output Formats**: Generates structured markdown with table of contents
+- **Binary Detection**: Automatically detects and skips binary files
 
 ## Installation
 
 ```bash
-# Install using uv tool (for global cli setup)
+# Install using uv (recommended)
 uv tool install llmd
 
-# Or install directly
+# Or install with pip
 pip install llmd
+```
+
+## Quick Start
+
+```bash
+# Generate context for current directory
+llmd
+
+# Generate context for specific repository
+llmd /path/to/repo
+
+# Process GitHub repository
+llmd --github https://github.com/user/repo
+
+# Create configuration template
+llmd init --whitelist
 ```
 
 ## Usage
 
-Basic usage:
+### Basic Usage
+
 ```bash
+# Use current directory with default settings
+llmd
+
+# Specify repository path
 llmd /path/to/repo
-```
 
-Specify output file:
-```bash
-llmd /path/to/repo -o context.md
-```
+# Specify output file
+llmd /path/to/repo -o my-context.md
 
-Override the llm.md configuration file:
-```bash
-llmd /path/to/repo -c custom-llm.md
-```
-
-Include only specific file patterns (ignoring all exclusions):
-```bash
-llmd /path/to/repo --only "*.py" --only "*.js"
-```
-
-Include additional files that would normally be excluded:
-```bash
-llmd /path/to/repo --include ".github/**" --include "build/*.js"
-```
-
-Exclude specific file patterns:
-```bash
-llmd /path/to/repo --exclude "**/test_*.py" --exclude "*.log"
-```
-
-Preview files without generating output:
-```bash
+# Preview files without generating output
 llmd /path/to/repo --dry-run
 ```
 
-Verbose output:
+### GitHub Integration
+
 ```bash
-llmd /path/to/repo -v
+# Process GitHub repository directly
+llmd --github https://github.com/user/repo
+
+# GitHub with custom output
+llmd --github https://github.com/user/repo -o github-context.md
+
+# GitHub with filtering
+llmd --github https://github.com/user/repo -w "*.py" -w "*.md"
+
+# SSH URLs supported
+llmd --github git@github.com:user/repo.git
 ```
 
-## Configuration
+### Filtering Modes
 
-### .gitignore
+#### Whitelist Mode (Explicit Inclusion)
+```bash
+# Include only specific patterns
+llmd . -w "src/" -w "*.md"
 
-The tool automatically reads and respects `.gitignore` patterns in the repository root.
-
-### llm.md
-
-The tool automatically detects and uses an `llm.md` file if present in the repository root. You can override this by specifying a different configuration file with the `-c` option.
-
-Create an `llm.md` file to control which files are included:
-
+# Whitelist with additional refinement
+llmd . -w "src/" -e "**/*.test.js" -i "src/important.test.js"
 ```
-# Example llm.md
 
-ONLY:
-# When present, ONLY these files are included, ignoring all exclusions
-src/**/*.py
-docs/*.md
+#### Blacklist Mode (Explicit Exclusion)
+```bash
+# Exclude specific patterns
+llmd . -b "tests/" -b "*.log"
 
-INCLUDE:
-# These patterns rescue files from exclusions (.gitignore, EXCLUDE, hidden files)
-.github/workflows/*.yml
-build/dist.js
+# Blacklist with refinement
+llmd . -b "**/*.test.*" -i "tests/fixtures/"
+```
+
+### Pattern Refinement
+
+Use `-i`/`--include` and `-e`/`--exclude` with mode flags for fine control:
+
+```bash
+# Whitelist with exceptions
+llmd . -w "src/" -e "src/vendor/" -i "src/vendor/our-patches/"
+
+# Blacklist with exceptions
+llmd . -b "tests/" -i "tests/fixtures/" -i "tests/utils.py"
+```
+
+### Behavior Control
+
+```bash
+# Include hidden files
+llmd . --with-hidden
+
+# Include binary files
+llmd . --with-binary
+
+# Include gitignored files
+llmd . --no-gitignore
+
+# Combine multiple overrides
+llmd . --with-hidden --with-binary --no-gitignore
+```
+
+### Utility Options
+
+```bash
+# Verbose output
+llmd . -v
+
+# Quiet mode (errors only)
+llmd . -q
+
+# Preview mode
+llmd . --dry-run
+```
+
+## Configuration File (llm.md)
+
+Create an `llm.md` file in your repository root to define default filtering rules.
+
+### Generate Templates
+
+```bash
+# Create whitelist template
+llmd init --whitelist
+
+# Create blacklist template  
+llmd init --blacklist
+
+# Create minimal template
+llmd init --minimal
+
+# Create default template
+llmd init
+```
+
+### Configuration Format
+
+#### Whitelist Mode
+```markdown
+WHITELIST:
+src/
+lib/
+*.md
+package.json
+
+OPTIONS:
+output: my-context.md
+respect_gitignore: true
+include_hidden: false
+include_binary: false
 
 EXCLUDE:
-# These files will be excluded (in addition to .gitignore)
-tests/**
-*.test.js
+src/__pycache__/
+**/*.test.js
+
+INCLUDE:
+tests/fixtures/
+important.test.js
 ```
 
-Pattern syntax follows gitignore conventions:
-- `*` matches any characters except `/`
-- `**` matches any number of directories
-- `?` matches any single character
-- `[abc]` matches any character in the brackets
-- `!` at the start negates the pattern
+#### Blacklist Mode
+```markdown
+BLACKLIST:
+tests/
+node_modules/
+coverage/
+*.log
+.git/
 
-### Command-line Options
+OPTIONS:
+output: project-context.md
+respect_gitignore: true
+include_hidden: false
+include_binary: false
 
-The pattern options allow you to control file inclusion/exclusion:
+INCLUDE:
+tests/fixtures/
+debug.log
+```
 
-- `--only`/`-O`: Include ONLY files matching these patterns, ignoring all exclusions (can be specified multiple times)
-- `--include`/`-i`: Rescue files matching these patterns from exclusions (can be specified multiple times)
-- `--exclude`/`-e`: Exclude files matching these patterns (can be specified multiple times)
-- `--dry-run`: Preview which files would be included without generating output
+### Pattern Syntax
 
-**Pattern precedence (highest to lowest):**
-1. `ONLY` patterns (CLI or llm.md) - when present, ONLY these files are included
-2. `INCLUDE` patterns - rescue files from exclusions (gitignore, EXCLUDE, hidden files)
-3. `EXCLUDE` patterns - additional exclusions beyond gitignore
-4. Default behavior - all files except gitignored, hidden, and binary files
+- `*` - matches any characters except `/`
+- `**` - matches any characters including `/` (recursive)
+- `?` - matches any single character
+- `[abc]` - matches any character in brackets
+- `pattern/` - matches directories
+- Patterns are relative to repository root
 
-**Priority rules:**
-- CLI `--only` patterns override any ONLY patterns in `llm.md`
-- CLI `--include` patterns override any INCLUDE patterns in `llm.md`
-- CLI `--exclude` patterns are additive with `llm.md` EXCLUDE patterns
+### Processing Order
 
-## Output Format
+1. **Mode determines initial set**: WHITELIST (empty) or BLACKLIST (all files)
+2. **Apply default exclusions**: gitignore, hidden files, binary files (unless overridden)
+3. **Apply mode patterns**: Add (whitelist) or remove (blacklist) files
+4. **Apply EXCLUDE sections**: Remove additional files
+5. **Apply INCLUDE sections**: Force include files (highest priority)
 
-The generated markdown file includes:
-1. Header with metadata (timestamp, repository path, file count)
-2. Table of contents with links to each file section
-3. Each file's content in a code block with appropriate syntax highlighting
+## Command Reference
+
+### Main Command
+
+```bash
+llmd [PATH] [OPTIONS]
+```
+
+**Arguments:**
+- `PATH` - Repository path (default: current directory)
+
+**Options:**
+- `-o, --output PATH` - Output file path (default: ./llm-context.md)
+- `--github URL` - Clone and process GitHub repository
+- `-w, --whitelist PATTERN` - Use whitelist mode with patterns
+- `-b, --blacklist PATTERN` - Use blacklist mode with patterns
+- `-i, --include PATTERN` - Include additional files (can be repeated)
+- `-e, --exclude PATTERN` - Exclude additional files (can be repeated)
+- `--include-gitignore` / `--exclude-gitignore` - Control gitignore handling
+- `--no-gitignore` - Alias for --include-gitignore
+- `--include-hidden` / `--exclude-hidden` - Control hidden file handling
+- `--with-hidden` - Alias for --include-hidden
+- `--include-binary` / `--exclude-binary` - Control binary file handling
+- `--with-binary` - Alias for --include-binary
+- `-v, --verbose` - Enable verbose output
+- `-q, --quiet` - Suppress non-error output
+- `--dry-run` - Show files without generating output
+- `--version` - Show version information
+- `--help` - Show help message
+
+### Init Command
+
+```bash
+llmd init [OPTIONS]
+```
+
+**Options:**
+- `-w, --whitelist` - Create whitelist mode template
+- `-b, --blacklist` - Create blacklist mode template  
+- `--minimal` - Create minimal template
+- `--help` - Show help message
 
 ## Examples
 
+### Common Workflows
+
+#### Documentation Generation
 ```bash
-# Generate context for the current directory (auto-detects llm.md if present)
-llmd .
-
-# Generate context for a specific project
-llmd ~/projects/my-app -o my-app-context.md
-
-# Use a different llm.md file than the one in the repository
-llmd ~/projects/my-app -c ~/configs/python-only.md
-
-# Include only Python files, ignoring all exclusions
-llmd . --only "*.py"
-
-# Include only specific file types
-llmd . -O "*.py" -O "*.js" -O "*.tsx"
-
-# Rescue hidden files and gitignored files that match patterns
-llmd . --include ".github/**" --include "build/dist.js"
-
-# Exclude test files
-llmd . --exclude "**/test_*.py" --exclude "**/*.test.js"
-
-# Preview files that would be included
-llmd . --dry-run --only "src/**/*.py"
-
-# Use ONLY to get test files that would normally be excluded
-llmd . --only "**/test_*.py" --only "**/*.test.js"
-
-# Combine rescue patterns with excludes
-llmd . --include ".env" --exclude "**/migrations/**"
-
-# Include only Python files (create llm.md in the repo)
-echo "INCLUDE:\n**/*.py" > llm.md
-llmd .
+# Include only documentation and source
+llmd . -w "src/" -w "docs/" -w "*.md" -w "*.rst"
 ```
+
+#### Code Review Context
+```bash
+# Exclude tests and build artifacts
+llmd . -b "tests/" -b "dist/" -b "build/" -b "coverage/"
+```
+
+#### Python Project
+```bash
+# Python files with configs
+llmd . -w "**/*.py" -w "*.yaml" -w "*.toml" -w "requirements*.txt"
+```
+
+#### JavaScript/TypeScript Project
+```bash
+# Source code only
+llmd . -w "src/" -w "*.json" -e "**/*.test.*" -e "**/node_modules/"
+```
+
+#### Configuration Files Only
+```bash
+# Just configuration
+llmd . -w "*.json" -w "*.yaml" -w "*.toml" -w "*.ini" -w "*.env*"
+```
+
+### Advanced Usage
+
+#### Multiple Repositories
+```bash
+# Process and compare multiple repos
+llmd --github https://github.com/user/repo1 -o repo1-context.md
+llmd --github https://github.com/user/repo2 -o repo2-context.md
+```
+
+#### Complex Filtering
+```bash
+# Include source but exclude tests, then rescue specific test files
+llmd . -w "src/" -e "**/*.test.*" -i "src/critical.test.js" -i "src/fixtures/"
+```
+
+#### Override Configuration
+```bash
+# Override llm.md settings with CLI
+llmd . -b "additional-exclude/" --with-hidden --no-gitignore
+```
+
+## Output Format
+
+The generated markdown includes:
+
+1. **Header**: Repository information, generation timestamp, file count
+2. **Table of Contents**: Clickable links to each file section
+3. **File Sections**: Each file's content with syntax highlighting
+
+Example output structure:
+```markdown
+# LLM Context for my-project
+
+Generated on: 2024-01-15 14:30:00
+Repository: /path/to/my-project
+Total files: 42
+
+---
+
+## Table of Contents
+
+1. [src/main.py](#src-main-py)
+2. [src/utils.py](#src-utils-py)
+...
+
+## src/main.py
+
+```python
+# File contents here
+```
+
+## src/utils.py
+
+```python
+# File contents here
+```
+```
+
+## Default Behaviors
+
+### No Configuration
+When no `llm.md` exists and no CLI mode flags are used:
+- Includes all repository files
+- Excludes gitignored files
+- Excludes hidden files (starting with `.`)
+- Excludes binary files
+- Outputs to `./llm-context.md`
+
+### Binary File Detection
+Files with these extensions are automatically excluded:
+- **Images**: `.jpg`, `.jpeg`, `.png`, `.gif`, `.bmp`, `.ico`, `.svg`
+- **Documents**: `.pdf`, `.doc`, `.docx`, `.xls`, `.xlsx`, `.ppt`, `.pptx`  
+- **Archives**: `.zip`, `.tar`, `.gz`, `.bz2`, `.7z`, `.rar`
+- **Executables**: `.exe`, `.dll`, `.so`, `.dylib`, `.bin`, `.obj`
+- **Media**: `.mp3`, `.mp4`, `.avi`, `.mov`, `.wav`, `.flac`
+- **Fonts**: `.ttf`, `.otf`, `.woff`, `.woff2`, `.eot`
+- **Compiled**: `.pyc`, `.pyo`, `.class`, `.o`, `.a`
+- **Databases**: `.db`, `.sqlite`, `.sqlite3`
+
+### Always Skipped Directories
+These directories are skipped unless explicitly included:
+- `.git`, `__pycache__`, `node_modules`
+- `.venv`, `venv`, `env`, `.env`
+- `.tox`, `.pytest_cache`, `.mypy_cache`
+- `dist`, `build`, `target`
+- `.next`, `.nuxt`
+
+## Error Handling
+
+Common error conditions:
+- **Invalid mode combination**: Using both `-w` and `-b` flags
+- **Invalid patterns**: Malformed glob patterns
+- **Access denied**: Insufficient permissions to read files
+- **Network issues**: GitHub repository cloning failures
+- **Invalid URLs**: Malformed GitHub repository URLs
+
+## Contributing
+
+This tool is part of a larger project. See the repository for contribution guidelines.
 
 ## License
 

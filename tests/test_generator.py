@@ -142,7 +142,7 @@ class TestMarkdownGenerator:
         
         for filename, expected_anchor in test_cases:
             # Create test file
-            file_path = temp_repo / filename.replace("/", Path.separator)
+            file_path = temp_repo / filename.replace("/", "/")
             file_path.parent.mkdir(parents=True, exist_ok=True) 
             file_path.write_text("test content")
             
