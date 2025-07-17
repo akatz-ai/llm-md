@@ -12,9 +12,104 @@ except PackageNotFoundError:
     __version__ = 'dev'
 
 
-@click.command()
+# Template content for init command
+DEFAULT_BLACKLIST_TEMPLATE = """BLACKLIST:
+tests/
+node_modules/
+__pycache__/
+.git/
+dist/
+build/
+coverage/
+*.log
+*.tmp
+
+OPTIONS:
+output: llm-context.md
+respect_gitignore: true
+include_hidden: false
+include_binary: false
+
+INCLUDE:
+README.md
+"""
+
+WHITELIST_TEMPLATE = """WHITELIST:
+src/
+lib/
+*.py
+*.js
+*.ts
+*.md
+package.json
+pyproject.toml
+
+OPTIONS:
+output: llm-context.md
+respect_gitignore: true
+include_hidden: false
+include_binary: false
+
+EXCLUDE:
+**/__pycache__/
+**/*.test.js
+**/*.test.py
+
+INCLUDE:
+tests/fixtures/
+"""
+
+BLACKLIST_TEMPLATE = """BLACKLIST:
+tests/
+node_modules/
+__pycache__/
+.git/
+dist/
+build/
+coverage/
+*.log
+*.tmp
+.env
+.venv/
+venv/
+
+OPTIONS:
+output: llm-context.md
+respect_gitignore: true
+include_hidden: false
+include_binary: false
+
+INCLUDE:
+tests/fixtures/
+debug.log
+"""
+
+MINIMAL_TEMPLATE = """WHITELIST:
+src/
+
+OPTIONS:
+output: llm-context.md
+"""
+
+
+class FlexibleGroup(click.Group):
+    def get_command(self, ctx, cmd_name):
+        # If command exists, return it
+        rv = super().get_command(ctx, cmd_name)
+        if rv is not None:
+            return rv
+        
+        # If no command found, and this looks like a path (exists as directory), 
+        # treat it as an argument for the main command
+        if Path(cmd_name).exists() and Path(cmd_name).is_dir():
+            return None  # This will cause invoke_without_command to be called
+        
+        # Otherwise, it's an unknown command
+        return rv
+
+@click.group(cls=FlexibleGroup, invoke_without_command=True, context_settings={'allow_extra_args': True, 'allow_interspersed_args': False})
 @click.version_option(version=__version__, prog_name='llmd')
-@click.argument('repo_path', type=click.Path(exists=True, file_okay=False, dir_okay=True, path_type=Path), default='.')
+@click.pass_context
 @click.option('-o', '--output', type=click.Path(path_type=Path), default='./llm-context.md',
               help='Output file or directory path (default: ./llm-context.md)')
 # Mode selection options (mutually exclusive)
@@ -40,7 +135,7 @@ except PackageNotFoundError:
 @click.option('-q', '--quiet', is_flag=True, help='Suppress non-error output')
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose output')
 @click.option('--dry-run', is_flag=True, help='Show which files would be included without generating output')
-def main(repo_path: Path, output: Path, whitelist_patterns: tuple, blacklist_patterns: tuple, 
+def main(ctx, output: Path, whitelist_patterns: tuple, blacklist_patterns: tuple, 
          include: tuple, exclude: tuple,
          include_gitignore: Optional[bool], include_gitignore_alias: bool,
          include_hidden: Optional[bool], include_hidden_alias: bool,
@@ -55,6 +150,23 @@ def main(repo_path: Path, output: Path, whitelist_patterns: tuple, blacklist_pat
     file filtering through whitelist/blacklist patterns, respecting gitignore 
     rules and binary file detection by default.
     """
+    # If a subcommand is invoked, don't run the main generation logic
+    if ctx.invoked_subcommand is not None:
+        return
+    
+    # Handle repository path from extra args
+    extra_args = ctx.args
+    if len(extra_args) > 1:
+        raise click.UsageError("Too many arguments. Expected at most one repository path.")
+    elif len(extra_args) == 1:
+        repo_path = Path(extra_args[0])
+        if not repo_path.exists():
+            raise click.UsageError(f"Repository path '{repo_path}' does not exist.")
+        if not repo_path.is_dir():
+            raise click.UsageError(f"Repository path '{repo_path}' is not a directory.")
+    else:
+        repo_path = Path('.')
+    
     # Validation: mode flags are mutually exclusive
     if whitelist_patterns and blacklist_patterns:
         raise click.UsageError("Options -w/--whitelist and -b/--blacklist are mutually exclusive.")
@@ -217,6 +329,54 @@ def main(repo_path: Path, output: Path, whitelist_patterns: tuple, blacklist_pat
     if verbose and not quiet:
         click.echo(f"  Total size: {len(content):,} characters")
         click.echo(f"  Files included: {len(files)}")
+
+
+@main.command()
+@click.option('-w', '--whitelist', 'template_whitelist', is_flag=True, 
+              help='Create whitelist mode template')
+@click.option('-b', '--blacklist', 'template_blacklist', is_flag=True,
+              help='Create blacklist mode template')
+@click.option('--minimal', is_flag=True,
+              help='Create minimal template')
+def init(template_whitelist: bool, template_blacklist: bool, minimal: bool):
+    """Create llm.md template in current directory.
+    
+    Generate a template llm.md configuration file in the current directory
+    to help get started with llmd configuration. Choose from different
+    template types based on your needs.
+    """
+    # Validation: template flags are mutually exclusive
+    flag_count = sum([template_whitelist, template_blacklist, minimal])
+    if flag_count > 1:
+        raise click.UsageError("Template options -w/--whitelist, -b/--blacklist, and --minimal are mutually exclusive.")
+    
+    # Check if llm.md already exists
+    llm_md_path = Path('llm.md')
+    if llm_md_path.exists():
+        raise click.ClickException("llm.md already exists in current directory. Remove it first or choose a different directory.")
+    
+    # Determine which template to use
+    if template_whitelist:
+        template_content = WHITELIST_TEMPLATE
+        template_type = "whitelist"
+    elif template_blacklist:
+        template_content = BLACKLIST_TEMPLATE
+        template_type = "blacklist"
+    elif minimal:
+        template_content = MINIMAL_TEMPLATE
+        template_type = "minimal"
+    else:
+        # Default template (blacklist mode)
+        template_content = DEFAULT_BLACKLIST_TEMPLATE
+        template_type = "default"
+    
+    # Write template file
+    try:
+        llm_md_path.write_text(template_content, encoding='utf-8')
+        click.echo(f"✓ Created {template_type} template: llm.md")
+        click.echo("Edit the file to customize patterns and options for your project.")
+    except Exception as e:
+        raise click.ClickException(f"Failed to create llm.md: {e}")
 
 
 if __name__ == '__main__':

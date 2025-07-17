@@ -43,24 +43,23 @@ class TestInitCommandBasicFunctionality:
         """Test that 'llmd init' creates default blacklist template."""
         runner = CliRunner()
         
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Change to temp directory
-            with runner.isolated_filesystem():
-                result = runner.invoke(main, ['init'])
-                assert result.exit_code == 0
-                
-                # Check that llm.md was created
-                llm_md = Path('llm.md')
-                assert llm_md.exists()
-                
-                # Check content matches default blacklist template
-                content = llm_md.read_text()
-                assert 'BLACKLIST:' in content
-                assert 'OPTIONS:' in content
-                assert 'output: llm-context.md' in content
-                assert 'respect_gitignore: true' in content
-                assert 'include_hidden: false' in content
-                assert 'include_binary: false' in content
+        # Change to temp directory
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ['init'])
+            assert result.exit_code == 0
+            
+            # Check that llm.md was created
+            llm_md = Path('llm.md')
+            assert llm_md.exists()
+            
+            # Check content matches default blacklist template
+            content = llm_md.read_text()
+            assert 'BLACKLIST:' in content
+            assert 'OPTIONS:' in content
+            assert 'output: llm-context.md' in content
+            assert 'respect_gitignore: true' in content
+            assert 'include_hidden: false' in content
+            assert 'include_binary: false' in content
 
 
 class TestInitTemplateTypes:
