@@ -11,7 +11,7 @@ This file tests the new CLI mode functionality:
 import tempfile
 from pathlib import Path
 from click.testing import CliRunner
-from llmd.cli import main
+from llmd.cli import main, set_test_args, clear_test_args
 
 
 class TestCliModeSelection:
@@ -584,32 +584,42 @@ class TestSequentialPatternProcessing:
             (repo_path / "main.py").write_text("print('main')")
             
             # Test order 1: exclude then include test.py
-            result1 = runner.invoke(main, [
-                str(repo_path),
-                '-w', '*.py',
-                '-e', 'test.py',
-                '-i', 'test.py',
-                '--dry-run'
-            ])
-            assert result1.exit_code == 0
-            
-            # test.py should be included (include comes after exclude)
-            assert "+test.py" in result1.output
-            assert "+main.py" in result1.output
+            test_args1 = [str(repo_path), '-w', '*.py', '-e', 'test.py', '-i', 'test.py', '--dry-run']
+            set_test_args(test_args1)
+            try:
+                result1 = runner.invoke(main, [
+                    str(repo_path),
+                    '-w', '*.py',
+                    '-e', 'test.py',
+                    '-i', 'test.py',
+                    '--dry-run'
+                ])
+                assert result1.exit_code == 0
+                
+                # test.py should be included (include comes after exclude)
+                assert "+test.py" in result1.output
+                assert "+main.py" in result1.output
+            finally:
+                clear_test_args()
             
             # Test order 2: include then exclude test.py  
-            result2 = runner.invoke(main, [
-                str(repo_path),
-                '-w', '*.py',
-                '-i', 'test.py',
-                '-e', 'test.py', 
-                '--dry-run'
-            ])
-            assert result2.exit_code == 0
-            
-            # test.py should be excluded (exclude comes after include)
-            assert "+test.py" not in result2.output
-            assert "+main.py" in result2.output
+            test_args2 = [str(repo_path), '-w', '*.py', '-i', 'test.py', '-e', 'test.py', '--dry-run']
+            set_test_args(test_args2)
+            try:
+                result2 = runner.invoke(main, [
+                    str(repo_path),
+                    '-w', '*.py',
+                    '-i', 'test.py',
+                    '-e', 'test.py', 
+                    '--dry-run'
+                ])
+                assert result2.exit_code == 0
+                
+                # test.py should be excluded (exclude comes after include)
+                assert "+test.py" not in result2.output
+                assert "+main.py" in result2.output
+            finally:
+                clear_test_args()
     
     def test_sequential_processing_ad_infinitum(self):
         """Test that sequential processing can continue indefinitely."""
@@ -624,8 +634,8 @@ class TestSequentialPatternProcessing:
             (repo_path / "file3.py").write_text("print('3')")
             (repo_path / "file4.py").write_text("print('4')")
             
-            # Test long chain of alternating exclude/include patterns
-            result = runner.invoke(main, [
+            # Set up test args for sequential processing
+            test_args = [
                 str(repo_path),
                 '-w', '*.py',          # Start with all Python files
                 '-e', 'file1.py',      # Exclude file1
@@ -636,19 +646,37 @@ class TestSequentialPatternProcessing:
                 '-i', 'file3.py',      # Rescue file3
                 '-e', 'file1.py',      # Exclude file1 again
                 '--dry-run'
-            ])
-            assert result.exit_code == 0
+            ]
+            set_test_args(test_args)
             
-            # Based on sequential processing:
-            # - file1: included → excluded → included → excluded (final: excluded)
-            # - file2: included → excluded → included (final: included)
-            # - file3: included → excluded → included (final: included)
-            # - file4: included (final: included)
-            
-            assert "+file1.py" not in result.output  # Finally excluded
-            assert "+file2.py" in result.output      # Finally included
-            assert "+file3.py" in result.output      # Finally included
-            assert "+file4.py" in result.output      # Never changed
+            try:
+                # Test long chain of alternating exclude/include patterns
+                result = runner.invoke(main, [
+                    str(repo_path),
+                    '-w', '*.py',          # Start with all Python files
+                    '-e', 'file1.py',      # Exclude file1
+                    '-e', 'file2.py',      # Exclude file2
+                    '-i', 'file1.py',      # Rescue file1
+                    '-e', 'file3.py',      # Exclude file3
+                    '-i', 'file2.py',      # Rescue file2
+                    '-i', 'file3.py',      # Rescue file3
+                    '-e', 'file1.py',      # Exclude file1 again
+                    '--dry-run'
+                ])
+                assert result.exit_code == 0
+                
+                # Based on sequential processing:
+                # - file1: included → excluded → excluded → included → excluded → included → included → excluded (final: excluded)
+                # - file2: included → excluded → excluded → included → included → included → included → included (final: included)
+                # - file3: included → included → included → included → excluded → included → included → included (final: included)
+                # - file4: included (final: included)
+                
+                assert "+file1.py" not in result.output  # Finally excluded
+                assert "+file2.py" in result.output      # Finally included
+                assert "+file3.py" in result.output      # Finally included
+                assert "+file4.py" in result.output      # Never changed
+            finally:
+                clear_test_args()
     
     def test_legacy_behavior_unchanged_without_mixing(self):
         """Test that existing CLI behavior is unchanged when not mixing -e and -i."""

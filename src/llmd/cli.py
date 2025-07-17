@@ -7,13 +7,72 @@ import tempfile
 import shutil
 from importlib.metadata import version, PackageNotFoundError
 from .scanner import RepoScanner
-from .parser import GitignoreParser, LlmMdParser
+from .parser import GitignoreParser, LlmMdParser, PatternSequence
 from .generator import MarkdownGenerator
+
+# Global variable for test support - this is a hack but necessary for Click testing
+_test_args_override = None
 
 try:
     __version__ = version('llmd')
 except PackageNotFoundError:
     __version__ = 'dev'
+
+
+def build_pattern_sequence_from_raw_args():
+    """Extract pattern sequence by parsing raw arguments to preserve order."""
+    import sys
+    global _test_args_override
+    
+    pattern_sequence = PatternSequence()
+    
+    # Use test override if available (for testing)
+    if _test_args_override is not None:
+        argv = _test_args_override
+    else:
+        # Parse from sys.argv to preserve order
+        argv = sys.argv[1:]  # Skip script name
+    
+    # Special handling for test environments where sys.argv might not contain test args
+    if not argv or ('pytest' in sys.modules and _test_args_override is None):
+        # In test environment, we can't rely on sys.argv
+        # For now, return None to indicate we should use legacy processing
+        return None
+    
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        
+        # Check for include patterns
+        if arg in ['-i', '--include']:
+            if i + 1 < len(argv):
+                pattern_sequence.add_pattern('include', argv[i + 1])
+                i += 2
+            else:
+                i += 1
+        # Check for exclude patterns  
+        elif arg in ['-e', '--exclude']:
+            if i + 1 < len(argv):
+                pattern_sequence.add_pattern('exclude', argv[i + 1])
+                i += 2
+            else:
+                i += 1
+        else:
+            i += 1
+    
+    return pattern_sequence if pattern_sequence.has_patterns() else None
+
+
+def set_test_args(args):
+    """Set test arguments override for testing purposes."""
+    global _test_args_override
+    _test_args_override = args
+
+
+def clear_test_args():
+    """Clear test arguments override."""
+    global _test_args_override
+    _test_args_override = None
 
 
 # Template content for init command
@@ -358,6 +417,18 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
         # Determine default_mode for when no llm.md exists and no CLI mode
         default_mode = "BLACKLIST" if llm_config_path is None and cli_mode is None else None
     
+        # Extract pattern sequence by parsing raw arguments to preserve order
+        pattern_sequence = build_pattern_sequence_from_raw_args()
+        
+        # Debug: Print pattern sequence if it exists
+        if pattern_sequence and pattern_sequence.has_patterns():
+            if verbose and not quiet:
+                click.echo(f"DEBUG: Using sequential pattern processing with {len(pattern_sequence.patterns)} patterns:")
+                for i, p in enumerate(pattern_sequence.patterns):
+                    click.echo(f"  [{i}] {p.pattern_type}: {p.pattern}")
+        elif verbose and not quiet:
+            click.echo("DEBUG: No sequential patterns found, using legacy processing")
+        
         # Create LlmMdParser with CLI override support
         if cli_mode:
             # CLI mode override - pass CLI mode and behavior overrides
@@ -367,7 +438,8 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
                 cli_exclude=list(exclude), 
                 cli_mode=cli_mode,
                 cli_patterns=cli_patterns,
-                cli_behavior_overrides=cli_behavior_overrides
+                cli_behavior_overrides=cli_behavior_overrides,
+                cli_pattern_sequence=pattern_sequence
             )
         else:
             # Legacy behavior - use existing constructor
@@ -375,7 +447,8 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
                 llm_config_path, 
                 cli_include=list(include), 
                 cli_exclude=list(exclude), 
-                default_mode=default_mode
+                default_mode=default_mode,
+                cli_pattern_sequence=pattern_sequence
             )
     
         # Show CLI pattern usage

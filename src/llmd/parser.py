@@ -1,6 +1,33 @@
 import pathspec
 from pathlib import Path
 from typing import List, Optional, Dict, Any, Union
+from dataclasses import dataclass
+
+
+@dataclass
+class SequentialPattern:
+    """Represents a single pattern in a sequence."""
+    pattern_type: str  # 'exclude' or 'include'
+    pattern: str
+
+
+class PatternSequence:
+    """Manages a sequence of include/exclude patterns for sequential processing."""
+    
+    def __init__(self):
+        self.patterns: List[SequentialPattern] = []
+    
+    def add_pattern(self, pattern_type: str, pattern: str):
+        """Add a pattern to the sequence."""
+        self.patterns.append(SequentialPattern(pattern_type, pattern))
+    
+    def get_patterns(self) -> List[SequentialPattern]:
+        """Get ordered list of patterns."""
+        return self.patterns.copy()
+    
+    def has_patterns(self) -> bool:
+        """Check if any patterns are present."""
+        return len(self.patterns) > 0
 
 
 class GitignoreParser:
@@ -42,7 +69,7 @@ class GitignoreParser:
 class LlmMdParser:
     """Parse llm.md configuration file."""
     
-    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, default_mode: Optional[str] = None, cli_mode: Optional[str] = None, cli_patterns: Optional[List[str]] = None, cli_behavior_overrides: Optional[Dict[str, Any]] = None):
+    def __init__(self, config_path: Optional[Path], cli_include: Optional[List[str]] = None, cli_exclude: Optional[List[str]] = None, default_mode: Optional[str] = None, cli_mode: Optional[str] = None, cli_patterns: Optional[List[str]] = None, cli_behavior_overrides: Optional[Dict[str, Any]] = None, cli_pattern_sequence: Optional[PatternSequence] = None):
         self.config_path = config_path
         self.default_mode = default_mode
         # Legacy format attributes
@@ -61,6 +88,7 @@ class LlmMdParser:
         self.cli_mode = cli_mode
         self.cli_patterns = cli_patterns or []
         self.cli_behavior_overrides = cli_behavior_overrides or {}
+        self.cli_pattern_sequence = cli_pattern_sequence
         
         # Initialize configuration
         if cli_mode:
@@ -83,20 +111,30 @@ class LlmMdParser:
         }
         self.sections.append(mode_section)
         
-        # Add pattern refinement sections if provided
-        if self.cli_exclude:
-            exclude_section = {
-                'type': 'EXCLUDE',
-                'patterns': self.cli_exclude
-            }
-            self.sections.append(exclude_section)
-            
-        if self.cli_include:
-            include_section = {
-                'type': 'INCLUDE', 
-                'patterns': self.cli_include
-            }
-            self.sections.append(include_section)
+        # Handle sequential patterns if provided (new behavior)
+        if self.cli_pattern_sequence and self.cli_pattern_sequence.has_patterns():
+            # Use sequential processing - add patterns in order
+            for seq_pattern in self.cli_pattern_sequence.get_patterns():
+                section = {
+                    'type': seq_pattern.pattern_type.upper(),
+                    'patterns': [seq_pattern.pattern]
+                }
+                self.sections.append(section)
+        else:
+            # Legacy behavior - add separate EXCLUDE and INCLUDE sections
+            if self.cli_exclude:
+                exclude_section = {
+                    'type': 'EXCLUDE',
+                    'patterns': self.cli_exclude
+                }
+                self.sections.append(exclude_section)
+                
+            if self.cli_include:
+                include_section = {
+                    'type': 'INCLUDE', 
+                    'patterns': self.cli_include
+                }
+                self.sections.append(include_section)
         
         # Set up options with CLI behavior overrides and defaults
         self.options = {
@@ -329,3 +367,12 @@ class LlmMdParser:
     def get_implicit_patterns(self) -> List[str]:
         """Get implicit patterns following mode declaration."""
         return self.implicit_patterns.copy()
+    
+    def has_sequential_patterns(self) -> bool:
+        """Check if sequential pattern processing should be used."""
+        return (self.cli_pattern_sequence is not None and 
+                self.cli_pattern_sequence.has_patterns())
+    
+    def get_pattern_sequence(self) -> Optional[PatternSequence]:
+        """Get the sequential pattern sequence if available."""
+        return self.cli_pattern_sequence
