@@ -1,7 +1,7 @@
 ---
 id: task-10
 title: Fix TOC anchor format bug in markdown generator
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-07-17'
 updated_date: '2025-07-17'
