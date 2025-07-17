@@ -376,3 +376,43 @@ class LlmMdParser:
     def get_pattern_sequence(self) -> Optional[PatternSequence]:
         """Get the sequential pattern sequence if available."""
         return self.cli_pattern_sequence
+    
+    def resolve_output_path(self) -> Optional[Path]:
+        """Resolve output path from OPTIONS, handling different path scenarios.
+        
+        Returns:
+            Path: Resolved output path, or None if no output option is specified
+            
+        Path resolution rules:
+        - Just filename: resolved relative to llm.md directory  
+        - Relative path: resolved relative to current working directory
+        - Absolute path: used as-is
+        - Directory only (ends with /): append default filename llm-context.md
+        """
+        if not self.config_path or 'output' not in self.options:
+            return None
+            
+        output_value = self.options['output']
+        if not output_value:
+            return None
+            
+        # Convert to Path object
+        output_path = Path(output_value)
+        
+        # Handle directory-only paths (ends with /)
+        if str(output_value).endswith('/'):
+            # Append default filename
+            output_path = output_path / 'llm-context.md'
+        
+        # If the path is absolute, use as-is
+        if output_path.is_absolute():
+            return output_path
+        
+        # For relative paths, we need to determine resolution base
+        # If it's just a filename (no path separators), resolve relative to llm.md directory
+        if len(output_path.parts) == 1:
+            # Just a filename - resolve relative to llm.md directory
+            return self.config_path.parent / output_path
+        else:
+            # Has path separators - resolve relative to current working directory
+            return Path.cwd() / output_path

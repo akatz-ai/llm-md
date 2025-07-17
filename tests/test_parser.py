@@ -607,3 +607,276 @@ class TestDefaultBehaviorIntegration:
             # Should exclude hidden and binary files by default exclusions
             assert Path(".hidden") not in rel_files
             assert Path("test.pyc") not in rel_files
+
+
+# TDD Tests for Output Path Handling Bug (Task 14)
+
+class TestOutputPathHandling:
+    """Test output path handling from llm.md OPTIONS section (Task 14)."""
+    
+    def test_output_filename_only_in_llm_md_options(self):
+        """Test output with just filename in llm.md creates file in same directory as llm.md."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+
+OPTIONS:
+output: my-custom-output.md
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            options = parser.get_options()
+            
+            # Should parse the output option correctly
+            assert options["output"] == "my-custom-output.md"
+            
+            # TODO: Add method to resolve output path relative to llm.md location
+            # For now, just test that the option is parsed
+            
+        finally:
+            config_path.unlink()
+    
+    def test_output_with_relative_path_in_llm_md_options(self):
+        """Test output with relative path in llm.md."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+
+OPTIONS:
+output: output/context.md
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            options = parser.get_options()
+            
+            # Should parse the output option correctly
+            assert options["output"] == "output/context.md"
+            
+        finally:
+            config_path.unlink()
+    
+    def test_output_with_absolute_path_in_llm_md_options(self):
+        """Test output with absolute path in llm.md."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+
+OPTIONS:
+output: /tmp/my-context.md
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            options = parser.get_options()
+            
+            # Should parse the output option correctly
+            assert options["output"] == "/tmp/my-context.md"
+            
+        finally:
+            config_path.unlink()
+    
+    def test_output_with_directory_only_in_llm_md_options(self):
+        """Test output with directory path only (no filename) uses default filename."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
+            f.write("""WHITELIST:
+src/
+
+OPTIONS:
+output: /tmp/output/
+""")
+            f.flush()
+            config_path = Path(f.name)
+        
+        try:
+            parser = LlmMdParser(config_path)
+            options = parser.get_options()
+            
+            # Should parse the output option correctly
+            assert options["output"] == "/tmp/output/"
+            
+            # TODO: Add method to resolve directory-only paths with default filename
+            
+        finally:
+            config_path.unlink()
+
+
+class TestOutputPathResolution:
+    """Test output path resolution logic (Task 14)."""
+    
+    def test_resolve_filename_only_relative_to_llm_md(self):
+        """Test resolving filename-only output relative to llm.md location."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            llm_md_path = temp_path / "project" / "llm.md"
+            llm_md_path.parent.mkdir(parents=True)
+            
+            llm_md_path.write_text("""WHITELIST:
+src/
+
+OPTIONS:
+output: custom-output.md
+""")
+            
+            parser = LlmMdParser(llm_md_path)
+            
+            # Test resolve_output_path method
+            resolved_path = parser.resolve_output_path()
+            expected_path = temp_path / "project" / "custom-output.md"
+            assert resolved_path == expected_path
+    
+    def test_resolve_directory_path_with_default_filename(self):
+        """Test resolving directory-only path with default filename."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            llm_md_path = temp_path / "llm.md"
+            
+            llm_md_path.write_text("""WHITELIST:
+src/
+
+OPTIONS:
+output: output/
+""")
+            
+            parser = LlmMdParser(llm_md_path)
+            
+            # Test resolve_output_path method  
+            resolved_path = parser.resolve_output_path()
+            expected_path = Path.cwd() / "output" / "llm-context.md"  # Should append default filename
+            assert resolved_path == expected_path
+    
+    def test_resolve_absolute_path(self):
+        """Test resolving absolute path output."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            llm_md_path = temp_path / "llm.md"
+            output_path = temp_path / "absolute-output.md"
+            
+            llm_md_path.write_text(f"""WHITELIST:
+src/
+
+OPTIONS:
+output: {output_path}
+""")
+            
+            parser = LlmMdParser(llm_md_path)
+            
+            # Test resolve_output_path method  
+            resolved_path = parser.resolve_output_path()
+            assert resolved_path == output_path
+    
+    def test_resolve_relative_path_with_dirs(self):
+        """Test resolving relative path with directories."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            llm_md_path = temp_path / "llm.md"
+            
+            llm_md_path.write_text("""WHITELIST:
+src/
+
+OPTIONS:
+output: docs/output.md
+""")
+            
+            parser = LlmMdParser(llm_md_path)
+            
+            # Test resolve_output_path method  
+            resolved_path = parser.resolve_output_path()
+            expected_path = Path.cwd() / "docs" / "output.md"  # Should resolve relative to cwd
+            assert resolved_path == expected_path
+    
+    def test_resolve_output_path_returns_none_when_no_output_option(self):
+        """Test that resolve_output_path returns None when no output option is specified."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            llm_md_path = temp_path / "llm.md"
+            
+            llm_md_path.write_text("""WHITELIST:
+src/
+""")
+            
+            parser = LlmMdParser(llm_md_path)
+            
+            # Test resolve_output_path method  
+            resolved_path = parser.resolve_output_path()
+            assert resolved_path is None
+
+
+class TestOutputPathCLIIntegration:
+    """Test CLI integration with output path handling (Task 14)."""
+    
+    def test_cli_uses_llm_md_output_option_when_no_cli_output_provided(self):
+        """Test that CLI uses llm.md output option when no --output flag is provided."""
+        from click.testing import CliRunner
+        from llmd.cli import main
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            llm_md_path = repo_path / "llm.md"
+            
+            # Create test files
+            (repo_path / "test.py").write_text("print('hello')")
+            
+            # Create llm.md with custom output
+            llm_md_path.write_text("""WHITELIST:
+*.py
+
+OPTIONS:
+output: my-custom-context.md
+""")
+            
+            runner = CliRunner()
+            result = runner.invoke(main, [str(repo_path)])
+            
+            # Should create output file with custom name from llm.md
+            custom_output = repo_path / "my-custom-context.md"
+            default_output = repo_path / "llm-context.md"
+            
+            assert result.exit_code == 0
+            
+            # Test that CLI uses llm.md output option when no --output flag is provided
+            assert custom_output.exists(), f"Expected custom output file {custom_output} to exist"
+            assert not default_output.exists(), f"Default output file {default_output} should not exist when llm.md specifies custom output"
+    
+    def test_cli_output_flag_overrides_llm_md_output_option(self):
+        """Test that explicit --output flag overrides llm.md output option."""
+        from click.testing import CliRunner
+        from llmd.cli import main
+        
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_path = Path(temp_dir)
+            llm_md_path = repo_path / "llm.md"
+            
+            # Create test files
+            (repo_path / "test.py").write_text("print('hello')")
+            
+            # Create llm.md with custom output that should be overridden
+            llm_md_path.write_text("""WHITELIST:
+*.py
+
+OPTIONS:
+output: should-be-ignored.md
+""")
+            
+            # Use absolute path for CLI override to ensure it's created in temp dir
+            cli_override_path = repo_path / "cli-override.md"
+            
+            runner = CliRunner()
+            result = runner.invoke(main, [str(repo_path), '--output', str(cli_override_path)])
+            
+            assert result.exit_code == 0
+            
+            # CLI flag should take precedence
+            cli_output = repo_path / "cli-override.md"
+            assert cli_output.exists()
+            
+            # llm.md output should NOT be created
+            ignored_output = repo_path / "should-be-ignored.md"
+            assert not ignored_output.exists()

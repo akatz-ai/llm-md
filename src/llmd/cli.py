@@ -511,14 +511,37 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
         if not quiet:
             click.echo(f"Found {len(files)} files to process")
     
+        # Resolve final output path with precedence: CLI explicit > llm.md output > CLI default
+        final_output = output
+        
+        # Detect if CLI --output was explicitly provided (not the default)
+        # Check if output is the default value (can be './llm-context.md' or 'llm-context.md')
+        cli_output_explicit = str(output) not in ('./llm-context.md', 'llm-context.md')
+        
+        if not cli_output_explicit and not cli_mode:
+            # CLI output not explicitly provided and not in CLI mode
+            # Try to use llm.md output option
+            llm_output_path = llm_parser.resolve_output_path()
+            if llm_output_path:
+                final_output = llm_output_path
+                if verbose and not dry_run and not quiet:
+                    click.echo(f"Using output path from llm.md: {final_output}")
+            elif verbose and not dry_run and not quiet:
+                click.echo(f"Using default output path: {final_output}")
+        elif verbose and not dry_run and not quiet:
+            if cli_output_explicit:
+                click.echo(f"Using CLI output path: {final_output}")
+            else:
+                click.echo(f"CLI mode active, using default output path: {final_output}")
+        
         # Generate markdown
         generator = MarkdownGenerator()
         content = generator.generate(files, repo_path)
         
         # Write output
-        output.write_text(content, encoding='utf-8')
+        final_output.write_text(content, encoding='utf-8')
         if not quiet:
-            click.echo(f"✓ Generated context file: {output}")
+            click.echo(f"✓ Generated context file: {final_output}")
         
         if verbose and not quiet:
             click.echo(f"  Total size: {len(content):,} characters")
