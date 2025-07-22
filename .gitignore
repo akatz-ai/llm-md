@@ -56,3 +56,6 @@ test-output.md
 .DS_Store
 Thumbs.db
 *.log
+
+# Claude
+.claude/

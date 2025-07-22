@@ -37,14 +37,35 @@ Total files: {file_count}
 
 ---"""
     
+    def _generate_anchor(self, text: str) -> str:
+        """Generate anchor ID following GitHub Flavored Markdown rules.
+        
+        GitHub's auto-generation rules:
+        - Convert to lowercase
+        - Keep alphanumeric characters and underscores/hyphens
+        - Remove dots, slashes, and other special characters
+        - Don't replace with hyphens, just remove them
+        """
+        # Convert to lowercase
+        anchor = text.lower()
+        
+        # Remove dots and slashes entirely (don't replace with hyphens)
+        anchor = anchor.replace('.', '').replace('/', '')
+        
+        # Keep only alphanumeric, underscores, and hyphens
+        import re
+        anchor = re.sub(r'[^a-z0-9_-]', '', anchor)
+        
+        return anchor
+    
     def _generate_toc(self, files: List[Path], repo_path: Path) -> str:
         """Generate table of contents."""
         lines = ["## Table of Contents\n"]
         
         for i, file in enumerate(files, 1):
             rel_path = file.relative_to(repo_path)
-            # Create anchor-friendly link
-            anchor = str(rel_path).replace('/', '-').replace('.', '-').lower()
+            # Create anchor-friendly link using GitHub standard
+            anchor = self._generate_anchor(str(rel_path))
             lines.append(f"{i}. [{rel_path}](#{anchor})")
         
         return '\n'.join(lines)
@@ -52,7 +73,6 @@ Total files: {file_count}
     def _generate_file_section(self, file: Path, repo_path: Path) -> str:
         """Generate a section for a single file."""
         rel_path = file.relative_to(repo_path)
-        anchor = str(rel_path).replace('/', '-').replace('.', '-').lower()
         
         # Determine language for syntax highlighting
         language = self._get_language(file)
@@ -65,8 +85,8 @@ Total files: {file_count}
         except Exception as e:
             content = f"[Error reading file: {e}]"
         
-        # Build section
-        section = f"""## {rel_path} {{#{anchor}}}
+        # Build section - let markdown processor auto-generate anchors
+        section = f"""## {rel_path}
 
 ```{language}
 {content}
