@@ -13,7 +13,7 @@ llmd $PROJECT_REPO/tests/ \
     -b "**__pycache__**"
 
 # Tasks context
-# llmd $PROJECT_REPO/backlog/tasks/ \
-#     -o $PROJECT_REPO/.llmd/tasks-context.md \
-#     -e "**.pyc" \
-#     -e "**__pycache__**"
+llmd $PROJECT_REPO/backlog/tasks/ \
+    -o $PROJECT_REPO/.llmd/tasks-context.md \
+    -b "**.pyc" \
+    -e "**__pycache__**"
