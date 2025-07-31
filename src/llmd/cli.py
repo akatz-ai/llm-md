@@ -5,6 +5,9 @@ import re
 import subprocess
 import tempfile
 import shutil
+import cProfile
+import pstats
+from io import StringIO
 from importlib.metadata import version, PackageNotFoundError
 from .scanner import RepoScanner
 from .parser import GitignoreParser, LlmMdParser, PatternSequence
@@ -251,6 +254,11 @@ class FlexibleGroup(click.Group):
         
         # Otherwise use normal command resolution
         return super().resolve_command(ctx, args)
+    
+    def format_usage(self, ctx, formatter):
+        """Override usage format to show [REPO_PATH] argument."""
+        prog_name = ctx.find_root().info_name
+        formatter.write_usage(prog_name, "[REPO_PATH] [OPTIONS] COMMAND [ARGS]...")
 
 
 class PathCommand(click.Command):
@@ -298,12 +306,13 @@ class PathCommand(click.Command):
 @click.option('-q', '--quiet', is_flag=True, help='Suppress non-error output')
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose output')
 @click.option('--dry-run', is_flag=True, help='Show which files would be included without generating output')
+@click.option('--profile', is_flag=True, help='Enable performance profiling')
 def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple, blacklist_patterns: tuple, 
          include: tuple, exclude: tuple,
          include_gitignore: Optional[bool], include_gitignore_alias: bool,
          include_hidden: Optional[bool], include_hidden_alias: bool,
          include_binary: Optional[bool], include_binary_alias: bool,
-         quiet: bool, verbose: bool, dry_run: bool):
+         quiet: bool, verbose: bool, dry_run: bool, profile: bool):
     """Generate LLM context from a repository.
     
     PATH: Repository path (default: current directory)
@@ -316,6 +325,12 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
     # If a subcommand is invoked, don't run the main generation logic
     if ctx.invoked_subcommand is not None:
         return
+    
+    # Initialize profiler if requested
+    profiler = None
+    if profile:
+        profiler = cProfile.Profile()
+        profiler.enable()
     
     # Handle GitHub repository URL
     temp_repo_dir = None
@@ -539,6 +554,7 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
         content = generator.generate(files, repo_path)
         
         # Write output
+        final_output.parent.mkdir(parents=True, exist_ok=True)
         final_output.write_text(content, encoding='utf-8')
         if not quiet:
             click.echo(f"✓ Generated context file: {final_output}")
@@ -553,6 +569,15 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
             cleanup_temp_repo(temp_repo_dir)
             if verbose and not dry_run and not quiet:
                 click.echo(f"Cleaned up temporary repository: {temp_repo_dir}")
+        
+        # Output profiler results if profiling was enabled
+        if profiler is not None:
+            profiler.disable()
+            s = StringIO()
+            ps = pstats.Stats(profiler, stream=s).sort_stats('cumulative')
+            ps.print_stats(20)  # Top 20 time-consuming functions
+            click.echo("\n=== Performance Profile ===")
+            click.echo(s.getvalue())
 
 
 @main.command()

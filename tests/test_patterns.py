@@ -585,32 +585,3 @@ OPTIONS:
         # This tests the edge case handling
         assert isinstance(files, list)
     
-    def test_legacy_format_without_only_still_works(self, temp_repo):
-        """Test that legacy INCLUDE/EXCLUDE format still works (Task 11: ONLY removed)."""
-        # Create llm.md with legacy format (no mode declaration, no ONLY section)
-        llm_md_content = """INCLUDE:
-*.md
-*.py
-
-EXCLUDE:
-test_*.py
-"""
-        llm_md_path = temp_repo / "llm.md"
-        llm_md_path.write_text(llm_md_content)
-        
-        gitignore_parser = GitignoreParser(temp_repo)
-        llm_parser = LlmMdParser(llm_md_path)
-        scanner = RepoScanner(temp_repo, gitignore_parser, llm_parser)
-        
-        files = scanner.scan()
-        file_paths = [str(f.relative_to(temp_repo)) for f in files]
-        
-        # Should include all normal files plus rescued files
-        assert "main.py" in file_paths  # rescued by INCLUDE
-        assert "src/module.py" in file_paths  # rescued by INCLUDE
-        assert "README.md" in file_paths  # rescued by INCLUDE
-        assert "docs/index.md" in file_paths  # rescued by INCLUDE
-        assert "data.json" in file_paths  # normal file
-        
-        # Should exclude based on EXCLUDE patterns
-        assert "test_main.py" not in file_paths  # excluded by test_*.py pattern

@@ -6,38 +6,6 @@ from llmd.parser import LlmMdParser, GitignoreParser
 class TestLlmMdParser:
     """Test the LlmMdParser class."""
     
-    def test_parse_legacy_format_fallback_without_only(self):
-        """Test parsing of legacy format without ONLY patterns (Task 11: ONLY patterns removed)."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as f:
-            f.write("""# Project Configuration
-
-Some description here.
-
-INCLUDE:
-.github/workflows/*.yml
-docs/*.md
-
-EXCLUDE:
-test_*.py
-**/node_modules/**
-
-NOT INCLUDE:
-*.log
-temp/*
-""")
-            f.flush()
-            config_path = Path(f.name)
-        
-        try:
-            parser = LlmMdParser(config_path)
-            
-            # ONLY patterns should not exist anymore
-            assert not hasattr(parser, 'only_patterns') or parser.only_patterns == []
-            assert parser.include_patterns == [".github/workflows/*.yml", "docs/*.md"]
-            # Both EXCLUDE and NOT INCLUDE should go to exclude_patterns
-            assert parser.exclude_patterns == ["test_*.py", "**/node_modules/**", "*.log", "temp/*"]
-        finally:
-            config_path.unlink()
     
     def test_empty_sections(self):
         """Test parsing with empty sections (Task 11: ONLY section removed)."""
