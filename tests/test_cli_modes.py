@@ -349,38 +349,6 @@ class TestTask6CliAlignment:
             assert "+tests/test_main.py" not in result.output
             assert "+README.md" in result.output
     
-    def test_legacy_config_option_removed(self):
-        """Test that -c/--config option is removed and causes error."""
-        runner = CliRunner()
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_path = Path(temp_dir)
-            (repo_path / "test.py").write_text("print('test')")
-            (repo_path / "custom.md").write_text("WHITELIST:\n*.py")
-            
-            # Test that -c flag causes error
-            result = runner.invoke(main, [str(repo_path), '-c', str(repo_path / "custom.md")])
-            assert result.exit_code != 0
-            
-            # Test that --config flag causes error
-            result = runner.invoke(main, [str(repo_path), '--config', str(repo_path / "custom.md")])
-            assert result.exit_code != 0
-    
-    def test_legacy_only_option_removed(self):
-        """Test that -O/--only option is removed and causes error."""
-        runner = CliRunner()
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_path = Path(temp_dir)
-            (repo_path / "test.py").write_text("print('test')")
-            
-            # Test that -O flag causes error
-            result = runner.invoke(main, [str(repo_path), '-O', '*.py'])
-            assert result.exit_code != 0
-            
-            # Test that --only flag causes error
-            result = runner.invoke(main, [str(repo_path), '--only', '*.py'])
-            assert result.exit_code != 0
     
     def test_default_output_path_is_dot_slash(self):
         """Test that default output path is './llm-context.md' not 'llm-context.md'."""
@@ -678,31 +646,6 @@ class TestSequentialPatternProcessing:
             finally:
                 clear_test_args()
     
-    def test_legacy_behavior_unchanged_without_mixing(self):
-        """Test that existing CLI behavior is unchanged when not mixing -e and -i."""
-        runner = CliRunner()
-        
-        with tempfile.TemporaryDirectory() as temp_dir:
-            repo_path = Path(temp_dir)
-            
-            # Create test file structure
-            (repo_path / "main.py").write_text("print('main')")
-            (repo_path / "test.py").write_text("print('test')")
-            (repo_path / "README.md").write_text("# README")
-            
-            # Test exclude only (should work as before)
-            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '-e', 'test.py', '--dry-run'])
-            assert result.exit_code == 0
-            assert "+main.py" in result.output
-            assert "+test.py" not in result.output
-            assert "+README.md" not in result.output
-            
-            # Test include only (should work as before)
-            result = runner.invoke(main, [str(repo_path), '-w', '*.py', '-i', '*.md', '--dry-run'])
-            assert result.exit_code == 0
-            assert "+main.py" in result.output
-            assert "+test.py" in result.output
-            assert "+README.md" in result.output  # Rescued by include
     
     def test_sequential_processing_with_mode_flags_only(self):
         """Test that sequential processing only applies when using -w or -b mode flags."""

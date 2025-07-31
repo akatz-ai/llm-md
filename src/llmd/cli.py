@@ -251,6 +251,11 @@ class FlexibleGroup(click.Group):
         
         # Otherwise use normal command resolution
         return super().resolve_command(ctx, args)
+    
+    def format_usage(self, ctx, formatter):
+        """Override usage format to show [REPO_PATH] argument."""
+        prog_name = ctx.find_root().info_name
+        formatter.write_usage(prog_name, "[REPO_PATH] [OPTIONS] COMMAND [ARGS]...")
 
 
 class PathCommand(click.Command):
@@ -539,6 +544,7 @@ def main(ctx, output: Path, github_url: Optional[str], whitelist_patterns: tuple
         content = generator.generate(files, repo_path)
         
         # Write output
+        final_output.parent.mkdir(parents=True, exist_ok=True)
         final_output.write_text(content, encoding='utf-8')
         if not quiet:
             click.echo(f"✓ Generated context file: {final_output}")
