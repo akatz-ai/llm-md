@@ -257,7 +257,7 @@ class FlexibleGroup(click.Group):
     
     def format_usage(self, ctx, formatter):
         """Override usage format to show [REPO_PATH] argument."""
-        prog_name = ctx.find_root().info_name
+        prog_name = ctx.find_root().info_name or 'llmd'
         formatter.write_usage(prog_name, "[REPO_PATH] [OPTIONS] COMMAND [ARGS]...")
 
 
@@ -273,7 +273,9 @@ class PathCommand(click.Command):
         # Create context but pass the path as an extra arg
         ctx = super().make_context(info_name, args, parent, **extra)
         # Put the path (command name) in args so main() can access it
-        ctx.args = [info_name] + ctx.args
+        # Ensure info_name is a string (it could be None in some contexts)
+        name = info_name or self.name or ''
+        ctx.args = [name] + ctx.args
         return ctx
 
 @click.group(cls=FlexibleGroup, invoke_without_command=True, context_settings={'allow_extra_args': True, 'allow_interspersed_args': False})

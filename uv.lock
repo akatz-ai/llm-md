@@ -47,7 +47,7 @@ wheels = [
 [[package]]
 name = "llmd"
 version = "0.3.2"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "pathspec" },
@@ -55,6 +55,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "llmd" },
     { name = "pytest" },
 ]
 
@@ -65,7 +66,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.4.1" }]
+dev = [
+    { name = "llmd", editable = "." },
+    { name = "pytest", specifier = ">=8.4.1" },
+]
 
 [[package]]
 name = "packaging"

@@ -12,6 +12,7 @@
 
 ### Development
 
+- `uv sync` - Initialize .venv with dependencies via pyproject.toml
 - `uv add <package>` - Install dependencies
 - `uv run ruff check --fix` - Lint and auto-fix with ruff
 - `uv pip list` - View dependencies
@@ -21,5 +22,5 @@
 
 - Always put new unit tests under tests/unit directory!
 - Try to add new tests to existing test files rather than creating new files (unless necessary)
-- `uv run python -m pytest tests/` - Run all tests
-- `uv run python -m pytest <filename>` - Run specific test file
+- `uv run pytest tests/` - Run all tests
+- `uv run pytest <filename>` - Run specific test file

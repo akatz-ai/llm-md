@@ -115,7 +115,7 @@ class RepoScanner:
         
         # 2. Process sections sequentially
         for section in sections:
-            files_set = self._process_section(files_set, section, mode, options)
+            files_set = self._process_section(files_set, section, options)
         
         # 4. Convert to sorted list and return
         files = list(files_set)
@@ -155,14 +155,14 @@ class RepoScanner:
         dir_prefixes = set()
         
         # Get patterns from both whitelist and include
-        all_patterns = []
+        all_patterns: List[str] = []
         if whitelist_spec:
             # Access the patterns from the PathSpec
             if hasattr(whitelist_spec, 'patterns'):
-                all_patterns.extend([p.pattern for p in whitelist_spec.patterns if hasattr(p, 'pattern')])
+                all_patterns.extend([getattr(p, 'pattern', '') for p in whitelist_spec.patterns if hasattr(p, 'pattern')])
         if include_spec:
             if hasattr(include_spec, 'patterns'):
-                all_patterns.extend([p.pattern for p in include_spec.patterns if hasattr(p, 'pattern')])
+                all_patterns.extend([getattr(p, 'pattern', '') for p in include_spec.patterns if hasattr(p, 'pattern')])
         
         for pattern in all_patterns:
             # Skip patterns that match everything
@@ -366,7 +366,7 @@ class RepoScanner:
         
         return files
     
-    def _get_cached_relative_path(self, file_path: Path) -> str:
+    def _get_cached_relative_path(self, file_path: Path) -> str | None:
         """Get cached relative path string to avoid repeated relative_to calls."""
         # Use string representation of path as cache key
         cache_key = str(file_path)
@@ -762,7 +762,7 @@ class RepoScanner:
         
         return True
     
-    def _process_section(self, files: Set[Path], section: Dict[str, Any], mode: str, options: Dict[str, Any]) -> Set[Path]:
+    def _process_section(self, files: Set[Path], section: Dict[str, Any], options: Dict[str, Any]) -> Set[Path]:
         """Process a single pattern section."""
         section_type = section.get('type')
         patterns = section.get('patterns', [])

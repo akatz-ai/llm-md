@@ -1,1 +1,0 @@
-Run an audit on the code under $ARGUMENTS and compare how closely it matches the expected APIs and implementation defined in the @backlog/docs/PRD.md. Deep dive and ultrathink. The code should be in good shape without any obvious issues or bugs, such that I can publish it to others feeling good that it will work as intended.
