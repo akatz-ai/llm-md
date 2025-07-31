@@ -36,6 +36,12 @@ class RepoScanner:
         self.verbose = verbose
         self._pattern_cache = {}
         self._gitignore_cache = {}
+        # Pre-calculate repo path string for faster operations
+        self._repo_path_str = str(repo_path)
+        # Cache for relative paths to avoid repeated calculations
+        self._relative_path_cache = {}
+        # Pre-compile binary extensions check
+        self._binary_extensions_lower = {ext.lower() for ext in self.BINARY_EXTENSIONS}
     
     def scan(self) -> List[Path]:
         """Optimized single-pass scan with early filtering."""
@@ -69,13 +75,23 @@ class RepoScanner:
         
         # Sequential processing needed if we have both INCLUDE/EXCLUDE in the same mode
         sections = self.llm_parser.get_sections()
-        section_types = [s.get('type') for s in sections if s.get('patterns')]
+        section_types = set(s.get('type') for s in sections if s.get('patterns'))
         
-        # If we have multiple section types that interact, use sequential processing
+        # If we have INCLUDE with any exclusion type (EXCLUDE, BLACKLIST), use sequential
         has_include = 'INCLUDE' in section_types
         has_exclude = 'EXCLUDE' in section_types
+        has_blacklist = 'BLACKLIST' in section_types
+        has_whitelist = 'WHITELIST' in section_types
         
-        if has_include and has_exclude:
+        # Need sequential processing if:
+        # 1. Both INCLUDE and EXCLUDE sections exist
+        # 2. INCLUDE exists with BLACKLIST mode
+        # 3. INCLUDE exists with WHITELIST mode and EXCLUDE
+        if has_include and (has_exclude or (has_blacklist and len(section_types) > 1)):
+            return True
+        
+        if has_whitelist and has_exclude and len(section_types) > 2:
+            # Complex whitelist mode with multiple section types
             return True
         
         return False
@@ -111,11 +127,13 @@ class RepoScanner:
         for section in sections:
             section_type = section.get('type')
             patterns = section.get('patterns', [])
+            # Only create PathSpec if there are patterns
             if patterns and section_type != 'OPTIONS':
                 try:
                     specs[section_type] = pathspec.PathSpec.from_lines('gitwildmatch', patterns)
                 except Exception:
                     pass
+            # Note: We don't create an entry if there are no patterns
         
         return specs
     
@@ -127,7 +145,9 @@ class RepoScanner:
             
             root_path = Path(root)
             for filename in files:
-                yield root_path / filename
+                full_path = root_path / filename
+                # Ensure we're yielding proper Path objects
+                yield full_path
     
     def _scan_optimized_blacklist(self) -> Iterator[Path]:
         """Use os.walk() for blacklist mode - must walk all directories (except .git)."""
@@ -137,17 +157,70 @@ class RepoScanner:
             
             root_path = Path(root)
             for filename in files:
-                yield root_path / filename
+                full_path = root_path / filename
+                # Ensure we're yielding proper Path objects
+                yield full_path
     
     def _scan_whitelist_optimized(self, pattern_specs: Dict[str, pathspec.PathSpec], options: Dict[str, Any]) -> List[Path]:
         """Optimized whitelist mode scanning."""
         files = []
         
+        # Pre-calculate options for faster access
+        respect_gitignore = options.get('respect_gitignore', True)
+        include_hidden = options.get('include_hidden', False)
+        include_binary = options.get('include_binary', False)
+        
+        # Pre-fetch specs for faster access
+        whitelist_spec = pattern_specs.get('WHITELIST')
+        exclude_spec = pattern_specs.get('EXCLUDE')
+        include_spec = pattern_specs.get('INCLUDE')
+        
         for file_path in self._scan_optimized_whitelist():
-            if self._should_include_file_optimized(file_path, pattern_specs, options, "WHITELIST"):
+            # Get cached relative path first (we'll need it for pattern matching)
+            rel_path = self._get_cached_relative_path(file_path)
+            if rel_path is None:
+                continue
+            
+            # Check if file matches include pattern first (highest priority - can rescue any file)
+            include_matched = include_spec and self._match_pattern_cached(include_spec, rel_path)
+            
+            # Check if file matches whitelist pattern
+            whitelist_matched = whitelist_spec and self._match_pattern_cached(whitelist_spec, rel_path)
+            
+            # If matched by include, always include (include overrides everything)
+            if include_matched:
                 files.append(file_path)
                 if self.verbose:
-                    click.echo(f"  + {os.path.relpath(file_path, self.repo_path)}")
+                    click.echo(f"  + {rel_path}")
+                continue
+            
+            # If matched by whitelist, apply filters and check exclude patterns
+            if whitelist_matched:
+                # Check if excluded by EXCLUDE pattern
+                if exclude_spec and self._match_pattern_cached(exclude_spec, rel_path):
+                    continue
+                
+                # Now apply default filters (but only for whitelist matches, not includes)
+                # Check binary files
+                if not include_binary:
+                    file_str = str(file_path)
+                    last_dot = file_str.rfind('.')
+                    if last_dot > 0:
+                        suffix_lower = file_str[last_dot:].lower()
+                        if suffix_lower in self._binary_extensions_lower:
+                            continue
+                
+                # Check hidden files
+                if not include_hidden and self._is_hidden_file_fast_cached(rel_path):
+                    continue
+                
+                # Check gitignore
+                if respect_gitignore and self._should_ignore_cached_optimized(file_path, rel_path):
+                    continue
+                
+                files.append(file_path)
+                if self.verbose:
+                    click.echo(f"  + {rel_path}")
         
         return files
     
@@ -155,13 +228,81 @@ class RepoScanner:
         """Optimized blacklist mode scanning."""
         files = []
         
+        # Pre-calculate options for faster access
+        respect_gitignore = options.get('respect_gitignore', True)
+        include_hidden = options.get('include_hidden', False)
+        include_binary = options.get('include_binary', False)
+        
+        # Pre-fetch specs for faster access
+        blacklist_spec = pattern_specs.get('BLACKLIST')
+        exclude_spec = pattern_specs.get('EXCLUDE')
+        include_spec = pattern_specs.get('INCLUDE')
+        
         for file_path in self._scan_optimized_blacklist():
-            if self._should_include_file_optimized(file_path, pattern_specs, options, "BLACKLIST"):
+            # Get cached relative path first (we'll need it for pattern matching)
+            rel_path = self._get_cached_relative_path(file_path)
+            if rel_path is None:
+                continue
+            
+            # Check if INCLUDE patterns force-include (highest priority - overrides everything)
+            if include_spec and self._match_pattern_cached(include_spec, rel_path):
                 files.append(file_path)
                 if self.verbose:
-                    click.echo(f"  + {os.path.relpath(file_path, self.repo_path)}")
+                    click.echo(f"  + {rel_path}")
+                continue
+            
+            # For non-included files, apply filters first
+            # Check binary files
+            if not include_binary:
+                file_str = str(file_path)
+                last_dot = file_str.rfind('.')
+                if last_dot > 0:
+                    suffix_lower = file_str[last_dot:].lower()
+                    if suffix_lower in self._binary_extensions_lower:
+                        continue
+            
+            # Check hidden files
+            if not include_hidden and self._is_hidden_file_fast_cached(rel_path):
+                continue
+            
+            # Check gitignore
+            if respect_gitignore and self._should_ignore_cached_optimized(file_path, rel_path):
+                continue
+            
+            # Check EXCLUDE patterns
+            if exclude_spec and self._match_pattern_cached(exclude_spec, rel_path):
+                continue
+            
+            # Check BLACKLIST patterns
+            if blacklist_spec and self._match_pattern_cached(blacklist_spec, rel_path):
+                continue
+            
+            # Include the file
+            files.append(file_path)
+            if self.verbose:
+                click.echo(f"  + {rel_path}")
         
         return files
+    
+    def _get_cached_relative_path(self, file_path: Path) -> str:
+        """Get cached relative path string to avoid repeated relative_to calls."""
+        # Use string representation of path as cache key for consistency
+        cache_key = str(file_path)
+        
+        if cache_key in self._relative_path_cache:
+            return self._relative_path_cache[cache_key]
+        
+        try:
+            # Use os.path.relpath for better performance than Path.relative_to
+            rel_path = os.path.relpath(file_path, self._repo_path_str)
+            # Normalize to forward slashes for consistency across platforms
+            rel_path = rel_path.replace(os.sep, '/')
+            self._relative_path_cache[cache_key] = rel_path
+            return rel_path
+        except ValueError:
+            # Path outside repo
+            self._relative_path_cache[cache_key] = None
+            return None
     
     def _should_include_file_optimized(self, file_path: Path, pattern_specs: Dict[str, pathspec.PathSpec], options: Dict[str, Any], mode: str) -> bool:
         """Optimized file inclusion check with pattern matching cache."""
@@ -247,6 +388,21 @@ class RepoScanner:
         self._pattern_cache[cache_key] = result
         return result
     
+    def _should_ignore_cached_optimized(self, file_path: Path, rel_path: str) -> bool:
+        """Optimized gitignore checking using pre-calculated relative path."""
+        # Use relative path as cache key since we already have it
+        if rel_path in self._gitignore_cache:
+            return self._gitignore_cache[rel_path]
+        
+        # Check if gitignore spec exists
+        if not self.gitignore_parser.spec:
+            self._gitignore_cache[rel_path] = False
+            return False
+        
+        result = self.gitignore_parser.spec.match_file(rel_path)
+        self._gitignore_cache[rel_path] = result
+        return result
+    
     def _should_ignore_cached(self, file_path: Path) -> bool:
         """Cached gitignore checking."""
         cache_key = str(file_path)
@@ -257,6 +413,22 @@ class RepoScanner:
         result = self.gitignore_parser.should_ignore(file_path)
         self._gitignore_cache[cache_key] = result
         return result
+    
+    def _is_hidden_file_fast_cached(self, rel_path: str) -> bool:
+        """Fast check for hidden files using pre-calculated relative path string."""
+        # rel_path uses forward slashes after normalization
+        # Check if file itself is hidden
+        basename = os.path.basename(rel_path)
+        if basename.startswith('.'):
+            return True
+        
+        # Check if any parent directory is hidden
+        parts = rel_path.split('/')
+        for part in parts[:-1]:  # Exclude the filename itself
+            if part.startswith('.'):
+                return True
+        
+        return False
     
     def _is_hidden_file_fast(self, file_path: Path) -> bool:
         """Fast check for hidden files using os.path instead of pathlib."""

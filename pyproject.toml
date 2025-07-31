@@ -1,6 +1,6 @@
 [project]
 name = "llmd"
-version = "0.3.1"
+version = "0.3.2"
 description = "CLI tool for generating LLM context from GitHub repositories"
 readme = "README.md"
 requires-python = ">=3.10"
